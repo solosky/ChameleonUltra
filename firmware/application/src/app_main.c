@@ -361,7 +361,7 @@ static void check_wakeup_src(void) {
         NRF_LOG_INFO("First power system");
 
         // 重置一下noinit ram区域
-        uint32_t *noinit_addr = (uint32_t *)0x20038000;
+        uint32_t *noinit_addr = (uint32_t *)0x20018000;
         memset(noinit_addr, 0xFF, 0x8000);
         NRF_LOG_INFO("Reset noinit ram done.");
 

@@ -73,8 +73,8 @@ static uint8_t m_hw_ver;
  */
 void board_lite_high_voltage_set(void) {
 #ifdef SOFTDEVICE_PRESENT
-    sd_power_dcdc_mode_set(NRF_POWER_DCDC_DISABLE);
-    sd_power_dcdc0_mode_set(NRF_POWER_DCDC_DISABLE);
+    //sd_power_dcdc_mode_set(NRF_POWER_DCDC_DISABLE);
+    //sd_power_dcdc0_mode_set(NRF_POWER_DCDC_DISABLE);
 #else
     NRF_POWER->DCDCEN = 0;
     NRF_POWER->DCDCEN0 = 0;
