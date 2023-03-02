@@ -1,3 +1,4 @@
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
 #ifndef USB_MAIN_H
 #define USB_MAIN_H
 
@@ -6,4 +7,5 @@
 void usb_cdc_init(void);
 void usb_cdc_write(const void *p_buf, uint16_t length);
 
+#endif
 #endif

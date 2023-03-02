@@ -194,7 +194,7 @@ static struct Crypto1State *pcs = &mpcs;
 
 // 定义指向存放侦测的数据的buffer
 // 将此数据放置在休眠保留的RAM中，以节约写入到Flash的时间和空间
-#define MF1_AUTH_LOG_MAX_SIZE   1000
+#define MF1_AUTH_LOG_MAX_SIZE   100
 static __attribute__((section(".noinit"))) struct nfc_tag_mf1_auth_log_buffer {
     uint32_t count;
     nfc_tag_mf1_auth_log_t logs[MF1_AUTH_LOG_MAX_SIZE];

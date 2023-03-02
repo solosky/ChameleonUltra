@@ -48,14 +48,14 @@ void sleep_timer_start(uint32_t time_ms) {
     // 先关闭之前的休眠定时器
     sleep_timer_stop();
     // 非USB供电状态
-    if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
-        // 如果蓝牙还连接着，或者还在模拟卡状态，就不需要启动休眠
-        if (g_is_ble_connected == false && g_is_tag_emulating == false) {
-            // 启动定时器
-            ret_code_t err_code = app_timer_start(m_app_sleep_timer, APP_TIMER_TICKS(time_ms), NULL);
-            APP_ERROR_CHECK(err_code);
-        }
-    }
+//    if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
+//        // 如果蓝牙还连接着，或者还在模拟卡状态，就不需要启动休眠
+//        if (g_is_ble_connected == false && g_is_tag_emulating == false) {
+//            // 启动定时器
+//            ret_code_t err_code = app_timer_start(m_app_sleep_timer, APP_TIMER_TICKS(time_ms), NULL);
+//            APP_ERROR_CHECK(err_code);
+//        }
+//    }
 }
 
 /**

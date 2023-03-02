@@ -1,3 +1,4 @@
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
 #include "usb_main.h"
 #include "syssleep.h"
 #include "dataframe.h"
@@ -181,3 +182,9 @@ int fputc(int ch, FILE *f){
     return ch;
 }
 */
+
+#else
+#include <stdbool.h>
+volatile bool g_usb_led_marquee_enable = true;
+
+#endif

@@ -79,6 +79,8 @@ void board_lite_high_voltage_set(void) {
     NRF_POWER->DCDCEN = 0;
     NRF_POWER->DCDCEN0 = 0;
 #endif
+
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
      // if the chameleon lite is powered from USB (high voltage mode), GPIO output voltage is set to 1.8 volts by
      // default and that is not enough to turn the green and blue LEDs on. Increase GPIO voltage to 3.0 volts.
     if (((NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) == (UICR_REGOUT0_VOUT_DEFAULT << UICR_REGOUT0_VOUT_Pos))) {
@@ -90,6 +92,8 @@ void board_lite_high_voltage_set(void) {
         // a reset is required for changes to take effect
         NVIC_SystemReset();
     }
+
+#endif
 }
 
 void hw_connect_init(void) {

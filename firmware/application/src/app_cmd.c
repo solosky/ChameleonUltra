@@ -595,12 +595,12 @@ void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint
     if (is_cmd_support) {
         // check and response
         if (response != NULL) {
-            usb_cdc_write(response->buffer, response->length);
+            //usb_cdc_write(response->buffer, response->length);
         }
     } else {
         // response cmd unsupport.
         response = data_frame_make(cmd, STATUS_INVALID_CMD, 0, NULL);
-        usb_cdc_write(response->buffer, response->length);
+        //usb_cdc_write(response->buffer, response->length);
         NRF_LOG_INFO("Data frame cmd invalid: %d,", cmd);
     }
 }
