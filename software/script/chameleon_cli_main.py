@@ -72,8 +72,10 @@ class ChameleonCLI:
                         'help': "Get/Set tag nick name for slot",
                     },
                     'update': new_uint(chameleon_cli_unit.HWSlotUpdate, "Update config & data to device flash"),
+                    'openall': new_uint(chameleon_cli_unit.HWSlotOpenAll, "Open all slot and set to default data"), 
                     'help': "Emulation tag slot.",
                 },
+                'dfu': new_uint(chameleon_cli_unit.HWDFU, "Restart application to bootloader mode(Not yet implement dfu)."),
                 'help': "hardware controller",
             },
             'hf': {
@@ -162,7 +164,7 @@ class ChameleonCLI:
                 continue
 
             if cmd_str == "exit":
-                print("Bye, thanks for you.  ^.^ ")
+                print("Bye, thank you.  ^.^ ")
                 sys.exit(996)
 
             # parse cmd

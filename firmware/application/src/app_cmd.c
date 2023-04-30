@@ -11,6 +11,7 @@
 #include "app_cmd.h"
 #include "app_status.h"
 #include "tag_persistence.h"
+#include "nrf_pwr_mgmt.h"
 
 
 #define NRF_LOG_MODULE_NAME app_cmd
@@ -20,9 +21,10 @@
 NRF_LOG_MODULE_REGISTER();
 
 
+
 data_frame_tx_t* cmd_processor_get_version(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    uint32_t version = 0xDEADBEEF;
-    return data_frame_make(cmd, 0xDED1, 4, (uint8_t*)&version);
+    uint16_t version = FW_VER_NUM;
+    return data_frame_make(cmd, status, 2, (uint8_t*)&version);
 }
 
 data_frame_tx_t* cmd_processor_change_device_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -50,6 +52,25 @@ data_frame_tx_t* cmd_processor_get_device_mode(uint16_t cmd, uint16_t status, ui
         status = 0;
     }
     return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 1, (uint8_t*)&status);
+}
+
+data_frame_tx_t* cmd_processor_enter_bootloader(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    // restart to boot
+    #define BOOTLOADER_DFU_GPREGRET_MASK            (0xB0)      
+    #define BOOTLOADER_DFU_START_BIT_MASK           (0x01)  
+    #define BOOTLOADER_DFU_START    (BOOTLOADER_DFU_GPREGRET_MASK |         BOOTLOADER_DFU_START_BIT_MASK)      
+    APP_ERROR_CHECK(sd_power_gpregret_clr(0,0xffffffff));
+    APP_ERROR_CHECK(sd_power_gpregret_set(0, BOOTLOADER_DFU_START));
+    nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_GOTO_DFU);
+    // Never into here...
+    while (1) __NOP();
+}
+
+data_frame_tx_t* cmd_processor_get_device_chip_id(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    uint32_t chip_id[2];
+    chip_id[0] = NRF_FICR->DEVICEID[0];
+    chip_id[1] = NRF_FICR->DEVICEID[1];
+    return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 8, (uint8_t*)(&chip_id[0]));
 }
 
 
@@ -105,7 +126,6 @@ data_frame_tx_t* cmd_processor_detect_nested_dist(uint16_t cmd, uint16_t status,
 	if (length == 8) {
 		status = Nested_Distacne_Detect(data[1], data[0], &data[2], &nd);
 		if (status == HF_TAG_OK) {
-			// 探测完成
 			length = sizeof(NestedDist);
 			data = (uint8_t *)(&nd);
 		} else {
@@ -123,7 +143,6 @@ data_frame_tx_t* cmd_processor_mf1_nt_distance(uint16_t cmd, uint16_t status, ui
 	if (length == 8) {
 		status = Nested_Distacne_Detect(data[1], data[0], &data[2], &nd);
 		if (status == HF_TAG_OK) {
-			// 探测完成
 			length = sizeof(NestedDist);
 			data = (uint8_t *)(&nd);
 		} else {
@@ -168,7 +187,6 @@ data_frame_tx_t* cmd_processor_mf1_read_one_block(uint16_t cmd, uint16_t status,
 	if (length == 8) {
 		status = auth_key_use_522_hw(data[1], data[0], &data[2]);
 		if (status == HF_TAG_OK) {
-			// 直接调用标准读取API去读取卡片
 			status = pcd_14a_reader_mf1_read(data[1], block);
 			if (status == HF_TAG_OK) {
 				length = 16;
@@ -189,7 +207,6 @@ data_frame_tx_t* cmd_processor_mf1_write_one_block(uint16_t cmd, uint16_t status
     if (length == 24) {
 		status = auth_key_use_522_hw(data[1], data[0], &data[2]);
 		if (status == HF_TAG_OK) {
-			// 直接调用标准写入API去写入卡片
 			status = pcd_14a_reader_mf1_write(data[1], &data[8]);
 		} else {
 			length = 0;
@@ -207,15 +224,8 @@ data_frame_tx_t* cmd_processor_em410x_scan(uint16_t cmd, uint16_t status, uint16
 }
 
 data_frame_tx_t* cmd_processor_write_em410x_2_t57(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 写入T55XX的标签需要提供一个5个Byte长度的卡号
-	// 并且还需要提供至少一个新的密钥，与一个旧的密钥
 	if (length >= 13 && (length - 9) % 4 == 0) {
-		status = PcdWriteT55XX(
-			data, 				// 传入UID
-			data + 5, 			// 传入newkey
-			data + 9,			// 传入oldkey
-			(length - 9) / 4 	// 传入减去newkey + uid后的剩余的oldkey的密钥组数
-		);
+		status = PcdWriteT55XX(data, data + 5, data + 9, (length - 9) / 4);
 	} else {
 		status = STATUS_PAR_ERR;
 	}
@@ -224,19 +234,15 @@ data_frame_tx_t* cmd_processor_write_em410x_2_t57(uint16_t cmd, uint16_t status,
 
 #endif
 
-// 封装一个自动切换卡槽的调用函数
+
 static void change_slot_auto(uint8_t slot) {
     device_mode_t mode = get_device_mode();
-    // 读卡器模式下不需要禁用模拟卡再进行切换
     tag_emulation_change_slot(slot, mode != DEVICE_MODE_READER);
-    // 重新亮灯
     light_up_by_slot();
-    // 默认亮起RGB
     set_slot_light_color(0);
 }
 
 data_frame_tx_t* cmd_processor_set_slot_activated(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 需要确保传过来的卡槽号码不要超过支持的上限
     if (length == 1 && data[0] < TAG_MAX_SLOT_NUM) {
         change_slot_auto(data[0]);
         status = STATUS_DEVICE_SUCCESS;
@@ -247,11 +253,9 @@ data_frame_tx_t* cmd_processor_set_slot_activated(uint16_t cmd, uint16_t status,
 }
 
 data_frame_tx_t* cmd_processor_set_slot_tag_type(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 需要确保传过来的标签类型是有效的
     if (length == 2 && data[0] < TAG_MAX_SLOT_NUM && data[1] != TAG_TYPE_UNKNOWN) {
-        uint8_t num_slot = data[0];    // 获得要操作的卡槽
-        uint8_t tag_type = data[1];    // 取出上位机传过来的标签类型
-        // 将当前的卡槽切换到指定的模拟卡类型
+        uint8_t num_slot = data[0];
+        uint8_t tag_type = data[1];
         tag_emulation_change_type(num_slot, (tag_specific_type_t)tag_type);
 		status = STATUS_DEVICE_SUCCESS;
 	} else {
@@ -261,11 +265,9 @@ data_frame_tx_t* cmd_processor_set_slot_tag_type(uint16_t cmd, uint16_t status, 
 }
 
 data_frame_tx_t* cmd_processor_set_slot_data_default(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 需要确保传过来的标签类型是有效的
     if (length == 2 && data[0] < TAG_MAX_SLOT_NUM && data[1] != TAG_TYPE_UNKNOWN) {
-        uint8_t num_slot = data[0];    // 获得要操作的卡槽
-        uint8_t tag_type = data[1];    // 取出上位机传过来的标签类型
-        // 重置当前的卡槽为缺省数据，如果失败，则可能是并未实现此API的缺省
+        uint8_t num_slot = data[0];
+        uint8_t tag_type = data[1];
         status = tag_emulation_factory_data(num_slot, (tag_specific_type_t)tag_type) ? STATUS_DEVICE_SUCCESS : STATUS_NOT_IMPLEMENTED;
 	} else {
         status = STATUS_PAR_ERR;
@@ -274,18 +276,14 @@ data_frame_tx_t* cmd_processor_set_slot_data_default(uint16_t cmd, uint16_t stat
 }
 
 data_frame_tx_t* cmd_processor_set_slot_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 需要确保传过来的标签类型是有效的
     if (length == 2 && data[0] < TAG_MAX_SLOT_NUM && (data[1] == 0 || data[1] == 1)) {
-        uint8_t slot_now = data[0];  // 获得要操作的卡槽
-        bool enable = data[1];  // 获得要操作的卡槽的状态
+        uint8_t slot_now = data[0];
+        bool enable = data[1];
         tag_emulation_slot_set_enable(slot_now, enable);
         if (!enable) {
-            // 禁用了当前卡槽后，重新找一个能用的卡槽，切换到那个卡槽上
             uint8_t slot_prev = tag_emulation_slot_find_next(slot_now);
             NRF_LOG_INFO("slot_now = %d, slot_prev = %d", slot_now, slot_prev);
             if (slot_prev == slot_now) {
-                // 找了一圈，发现并没有找到使能的卡槽，那么说明全部的卡槽都被禁用了
-                // 此时我们应当灭掉卡槽灯
                 set_slot_light_color(3);
             } else {
                 change_slot_auto(slot_prev);
@@ -304,13 +302,9 @@ data_frame_tx_t* cmd_processor_slot_data_config_save(uint16_t cmd, uint16_t stat
 }
 
 data_frame_tx_t* cmd_processor_set_em410x_emu_id(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    // 需要确保传过来的ID长度是对的
     if (length == LF_EM410X_TAG_ID_SIZE) {
-        // 获取EM410x的缓冲区
         tag_data_buffer_t* buffer = get_buffer_by_tag_type(TAG_TYPE_EM410X);
-        // 设置卡号进去
         memcpy(buffer->buffer, data, LF_EM410X_TAG_ID_SIZE);
-        // 重新通知加载数据
         tag_emulation_load_by_buffer(TAG_TYPE_EM410X, false);
         status = STATUS_DEVICE_SUCCESS;
 	} else {
@@ -321,7 +315,7 @@ data_frame_tx_t* cmd_processor_set_em410x_emu_id(uint16_t cmd, uint16_t status, 
 
 data_frame_tx_t* cmd_processor_set_mf1_detection_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     if (length == 1 && (data[0] == 0 || data[0] == 1)) {
-        nfc_tag_mf1_detection_log_clear();  // 无论如何，操作日志的记录状态都要清除日志的历史记录
+        nfc_tag_mf1_detection_log_clear();
         nfc_tag_mf1_set_detection_enable(data[0]);
         status = STATUS_DEVICE_SUCCESS;
 	} else {
@@ -352,11 +346,8 @@ data_frame_tx_t* cmd_processor_get_mf1_detection_log(uint16_t cmd, uint16_t stat
             index = bytes_to_num(data, 4);
             // NRF_LOG_INFO("index = %d", index);
             if (index < count) {
-                // 直接使用头部地址+index作为数据源
                 resp = (uint8_t *)(logs + index);
-                // 计算当前还能传输多少个日志
                 length = MIN(count - index, DATA_PACK_MAX_DATA_LENGTH / sizeof(nfc_tag_mf1_auth_log_t));
-                // 计算当前传输的日志总字节长度
                 length = length * sizeof(nfc_tag_mf1_auth_log_t);
                 status = STATUS_DEVICE_SUCCESS;
             } else {
@@ -373,21 +364,17 @@ data_frame_tx_t* cmd_processor_get_mf1_detection_log(uint16_t cmd, uint16_t stat
 
 data_frame_tx_t* cmd_processor_set_mf1_emulator_block(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     if (length > 0 && (((length - 1) % NFC_TAG_MF1_DATA_SIZE) == 0)) {
-        // 我们必须要确保传输过来的块数据没有越界
         uint8_t block_index = data[0];
         uint8_t block_count = (length - 1) % NFC_TAG_MF1_DATA_SIZE;
         if (block_index + block_count > NFC_TAG_MF1_BLOCK_MAX) {
             status = STATUS_PAR_ERR;
         } else {
-            // 默认获得最大的IC卡数据缓冲区
             tag_data_buffer_t* buffer = get_buffer_by_tag_type(TAG_TYPE_MIFARE_4096);
             nfc_tag_mf1_information_t *info = (nfc_tag_mf1_information_t *)buffer->buffer;
-            // 没有越界，我们可以进行block设置
             for (int i = 1, j = block_index; i < length - 1; i += NFC_TAG_MF1_DATA_SIZE, j++) {
                 uint8_t *p_block = &data[i];
                 memcpy(info->memory[j], p_block, NFC_TAG_MF1_DATA_SIZE);
             }
-            // 设置完成，我们可以告知上位机
             status = STATUS_DEVICE_SUCCESS;
         }
     } else {
@@ -398,7 +385,7 @@ data_frame_tx_t* cmd_processor_set_mf1_emulator_block(uint16_t cmd, uint16_t sta
 
 data_frame_tx_t* cmd_processor_set_mf1_anti_collision_res(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     if (length > 13) {
-        // sak(1) + atqa(2) + uid(10) 设置基础参数，长度绝对不会大于13个字节
+        // sak(1) + atqa(2) + uid(10)
         status = STATUS_PAR_ERR;
     } else {
         uint8_t uid_length = length - 3;
@@ -414,7 +401,6 @@ data_frame_tx_t* cmd_processor_set_mf1_anti_collision_res(uint16_t cmd, uint16_t
             *(info->size) = (nfc_tag_14a_uid_size)uid_length;
             status = STATUS_DEVICE_SUCCESS;
         } else {
-            // UID长度不对
             status = STATUS_PAR_ERR;
         }
     }
@@ -433,8 +419,8 @@ data_frame_tx_t* cmd_processor_set_slot_tag_nick_name(uint16_t cmd, uint16_t sta
         get_fds_map_by_slot_sense_type_for_nick(slot, sense_type, &map_info);
         
         uint8_t buffer[36];
-        buffer[0] = length - 2; // 减去开头的两个字节，剩下的就是昵称的字节流
-        memcpy(buffer + 1, data + 2, buffer[0]);    // 拷贝一份昵称到缓冲区中，这样子缓冲区里就有 一个字节开头的长度 + 昵称字节流
+        buffer[0] = length - 2;
+        memcpy(buffer + 1, data + 2, buffer[0]);
         
         bool ret = fds_write_sync(map_info.id, map_info.key, sizeof(buffer) / 4, buffer);
         if (ret) {
@@ -520,6 +506,8 @@ static cmd_data_map_t m_data_cmd_map[] = {
     {    DATA_CMD_GET_APP_VERSION,              NULL,                        cmd_processor_get_version,                   NULL                   },
     {    DATA_CMD_CHANGE_DEVICE_MODE,           NULL,                        cmd_processor_change_device_mode,            NULL                   },
     {    DATA_CMD_GET_DEVICE_MODE,              NULL,                        cmd_processor_get_device_mode,               NULL                   },
+    {    DATA_CMD_ENTER_BOOTLOADER,             NULL,                        cmd_processor_enter_bootloader,              NULL                   },
+    {    DATA_CMD_GET_DEVICE_CHIP_ID,           NULL,                        cmd_processor_get_device_chip_id,            NULL                   },
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
 
@@ -561,6 +549,28 @@ static cmd_data_map_t m_data_cmd_map[] = {
 };
 
 
+/**
+ * @brief Auto select source to response 
+ * 
+ * @param resp data
+ */
+void auto_response_data(data_frame_tx_t* resp) {
+	// TODO Please select the reply source automatically according to the message source, 
+    //  and do not reply by checking the validity of the link layer by layer
+    #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+	if (is_usb_working()) {
+		usb_cdc_write(resp->buffer, resp->length);
+	} else if (is_nus_working()) {
+		nus_data_reponse(resp->buffer, resp->length);
+	} else {
+		NRF_LOG_ERROR("No connection valid found at response client.");
+	}
+    #else
+    nus_data_reponse(resp->buffer, resp->length);
+    #endif
+}
+
+
 /**@brief Function for prcoess data frame(cmd)
  */
 void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -595,12 +605,12 @@ void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint
     if (is_cmd_support) {
         // check and response
         if (response != NULL) {
-            //usb_cdc_write(response->buffer, response->length);
+            auto_response_data(response);
         }
     } else {
         // response cmd unsupport.
         response = data_frame_make(cmd, STATUS_INVALID_CMD, 0, NULL);
-        //usb_cdc_write(response->buffer, response->length);
+        auto_response_data(response);
         NRF_LOG_INFO("Data frame cmd invalid: %d,", cmd);
     }
 }

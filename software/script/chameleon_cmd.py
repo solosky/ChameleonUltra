@@ -3,6 +3,7 @@ import enum
 import chameleon_com
 import chameleon_status
 
+DATA_CMD_GET_APP_VERSION = 1000
 DATA_CMD_CHANGE_MODE = 1001
 DATA_CMD_GET_DEVICE_MODE = 1002
 DATA_CMD_SET_SLOT_ACTIVATED = 1003
@@ -14,6 +15,9 @@ DATA_CMD_SET_SLOT_TAG_NICK = 1007
 DATA_CMD_GET_SLOT_TAG_NICK = 1008
 
 DATA_CMD_SLOT_DATA_CONFIG_SAVE = 1009
+
+DATA_CMD_ENTER_BOOTLOADER = 1010
+DATA_CMD_GET_DEVICE_CHIP_ID = 1011
 
 DATA_CMD_SCAN_14A_TAG = 2000
 DATA_CMD_MF1_SUPPORT_DETECT = 2001
@@ -82,6 +86,22 @@ class BaseChameleonCMD:
         :param chameleon: chameleon instance, @see chameleon_device.Chameleon
         """
         self.device = chameleon
+
+    def get_firmware_version(self) -> int:
+        """
+            Get firmware version number(application)
+        """
+        resp = self.device.send_cmd_sync(DATA_CMD_GET_APP_VERSION, 0x00, None)
+        return int.from_bytes(resp.data, 'little')
+    
+    def get_device_chip_id(self) -> str:
+        """
+            Get device chip id
+        """
+        resp = self.device.send_cmd_sync(DATA_CMD_GET_DEVICE_CHIP_ID, 0x00, None)
+        return resp.data.hex()
+    
+    
 
     def is_reader_device_mode(self) -> bool:
         """
@@ -391,6 +411,12 @@ class BaseChameleonCMD:
         """
         return self.device.send_cmd_sync(DATA_CMD_SLOT_DATA_CONFIG_SAVE, 0x00, None)
 
+    def enter_dfu_mode(self):
+        """
+            重启进入DFU模式(bootloader)
+        :return:
+        """
+        return self.device.send_cmd_auto(DATA_CMD_ENTER_BOOTLOADER, 0x00, None)
 
 
 class NegativeResponseError(Exception):
@@ -527,3 +553,19 @@ class PositiveChameleonCMD(BaseChameleonCMD):
         return ret
 
 
+if __name__ == '__main__':
+    # connect to chameleon
+    dev = chameleon_com.ChameleonCom()
+    dev.open("com19")
+    cml = BaseChameleonCMD(dev)
+    ver = cml.get_firmware_version()
+    print(f"Firmware number of application: {ver}")
+    id = cml.get_device_chip_id()
+    print(f"Device chip id: {id}")
+
+
+    # disconnect
+    dev.close()
+    
+    # nerver exit
+    while True: pass

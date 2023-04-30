@@ -901,3 +901,49 @@ class HWSlotUpdate(DeviceRequiredUnit):
     def on_exec(self, args: argparse.Namespace):
         self.cmd_positive.update_slot_data_config()
         print(f' - Update config and data from device memory to flash success.')
+
+
+class HWSlotOpenAll(DeviceRequiredUnit):
+
+    def args_parser(self) -> ArgumentParserNoExit or None:
+        return None
+    
+    # hw slot openall
+    def on_exec(self, args: argparse.Namespace):
+        # what type you need set to default?
+        hf_type = chameleon_cmd.TagSpecificType.TAG_TYPE_MIFARE_1024
+        lf_type = chameleon_cmd.TagSpecificType.TAG_TYPE_EM410X
+
+        # set all slot
+        for slot in range(8):
+            # the slot not from 0 offset, so we can inc 1.
+            slot = slot + 1
+            print(f' Slot{slot} setting...')
+            # first to set tag type
+            self.cmd_positive.set_slot_tag_type(slot, hf_type)
+            self.cmd_positive.set_slot_tag_type(slot, lf_type)
+            # to init default data
+            self.cmd_positive.set_slot_data_default(slot, hf_type)
+            self.cmd_positive.set_slot_data_default(slot, lf_type)
+            # finally, we can enable this slot.
+            self.cmd_positive.set_slot_enable(slot, True)
+            print(f' Open slot{slot} finish')
+
+        # update config and save to flash
+        self.cmd_positive.update_slot_data_config()
+        print(f' - Open all slot and set data to default success.')
+
+
+class HWDFU(DeviceRequiredUnit):
+
+    def args_parser(self) -> ArgumentParserNoExit or None:
+        return None
+    
+    # hw dfu
+    def on_exec(self, args: argparse.Namespace):
+        print("Application restarting...")
+        self.cmd_standard.enter_dfu_mode()
+        # 理论上，上面的指令执行完成后，dfu模式会进入，然后USB会重启，
+        # 我们判断是否成功进入USB，只需要判断USB是否变成DFU设备的VID和PID即可，
+        # 同时我们记得确认设备的信息，一致时才是同一个设备。
+        print(" - Enter success @.@~")

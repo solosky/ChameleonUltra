@@ -1,29 +1,15 @@
-PROJECT_NAME     := chameleon_bootloader
+include ../Makefile.defs
+
 TARGETS          := bootloader
-OUTPUT_DIRECTORY := out
-
-SDK_ROOT := ../../resource/nrf52_sdk
-PROJ_DIR := ./src/
-DFU_DIR  := ../../resource/dfu_key/
-LD_DIR   := ../../resource/link_script/
-SRC_PUBLIC := ../../resource/public_src/
-
-
 $(OUTPUT_DIRECTORY)/bootloader.out: \
-  LINKER_SCRIPT  := ${LD_DIR}/bootloader.ld
-
-
-CHAMELEON_ULTRA := ultra
-CHAMELEON_LITE  := lite
-# What device is it?
-CURRENT_DEVICE_TYPE := ${CHAMELEON_ULTRA}
+  LINKER_SCRIPT  := bootloader.ld
 
 
 # Source files common to all targets
 SRC_FILES += \
   $(PROJ_DIR)/main.c \
-  $(SRC_PUBLIC)/hw_connect.c \
-  $(DFU_DIR)/dfu_public_key.c \
+  $(PROJ_DIR)/dfu_public_key.c \
+  $(SRC_COMMON)/hw_connect.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_systick.c \
@@ -114,7 +100,7 @@ SRC_FILES += \
 # Include folders common to all targets
 INC_FOLDERS += \
   $(PROJ_DIR) \
-  ${SRC_PUBLIC} \
+  ${SRC_COMMON} \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components/libraries/crypto/backend/micro_ecc \
   $(SDK_ROOT)/components/libraries/memobj \
@@ -262,7 +248,6 @@ help:
 	@echo		flash      - flashing binary
 
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
-
 
 include $(TEMPLATE_PATH)/Makefile.common
 
