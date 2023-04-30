@@ -390,6 +390,7 @@ static void check_wakeup_src(void) {
 //            // usb插着可以随便广播BLE
 //            advertising_start();
 //        } else {
+            advertising_start();
             sleep_timer_start(SLEEP_DELAY_MS_FRIST_POWER); // 等一会儿直接进入休眠，啥都不干
         //}
     }
