@@ -36,20 +36,23 @@ data_frame_tx_t *cmd_processor_get_git_version(uint16_t cmd, uint16_t status, ui
 
 
 data_frame_tx_t *cmd_processor_change_device_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-#if defined(PROJECT_CHAMELEON_ULTRA)
     if (length == 1) {
         if (data[0] == 1) {
+#if defined(PROJECT_CHAMELEON_ULTRA)
             reader_mode_enter();
+            return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 0, NULL);
+#else
+            return data_frame_make(cmd, STATUS_NOT_IMPLEMENTED, 0, NULL);
+#endif
         } else {
+#if defined(PROJECT_CHAMELEON_ULTRA)
             tag_mode_enter();
+#endif
+            return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 0, NULL);
         }
     } else {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
-    return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 0, NULL);
-#else
-    return data_frame_make(cmd, STATUS_NOT_IMPLEMENTED, 0, NULL);
-#endif
 }
 
 data_frame_tx_t *cmd_processor_get_device_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -83,8 +86,12 @@ data_frame_tx_t *cmd_processor_get_device_chip_id(uint16_t cmd, uint16_t status,
 
 data_frame_tx_t *cmd_processor_get_device_address(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     uint32_t device_address[2];
+    // The FICR value is a just a random number, with no knowledge
+    // of the Bluetooth Specification requirements for random addresses.
+    // So we need to set a Bluetooth LE random address as a static address.
+    // See: https://github.com/zephyrproject-rtos/zephyr/blob/7b6b1328a0cb96fe313a5e2bfc57047471df236e/subsys/bluetooth/controller/hci/nordic/hci_vendor.c#L29
     device_address[0] = NRF_FICR->DEVICEADDR[0];
-    device_address[1] = NRF_FICR->DEVICEADDR[1];
+    device_address[1] = NRF_FICR->DEVICEADDR[1] | 0xC000;
     return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 6, (uint8_t *)(&device_address[0]));
 }
 
@@ -185,24 +192,24 @@ data_frame_tx_t *cmd_processor_14a_scan(uint16_t cmd, uint16_t status, uint16_t 
 }
 
 data_frame_tx_t *cmd_processor_detect_mf1_support(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    status = Check_STDMifareNT_Support();
+    status = check_std_mifare_nt_support();
     return data_frame_make(cmd, status, 0, NULL);
 }
 
 data_frame_tx_t *cmd_processor_detect_mf1_nt_level(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    status = Check_WeakNested_Support();
+    status = check_weak_nested_support();
     return data_frame_make(cmd, status, 0, NULL);
 }
 
 data_frame_tx_t *cmd_processor_detect_mf1_darkside(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    status = Check_Darkside_Support();
+    status = check_darkside_support();
     return data_frame_make(cmd, status, 0, NULL);
 }
 
 data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     DarksideCore dc;
     if (length == 4) {
-        status = Darkside_Recover_Key(data[1], data[0], data[2], data[3], &dc);
+        status = darkside_recover_key(data[1], data[0], data[2], data[3], &dc);
         if (status == HF_TAG_OK) {
             length = sizeof(DarksideCore);
             data = (uint8_t *)(&dc);
@@ -219,7 +226,7 @@ data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_t statu
 data_frame_tx_t *cmd_processor_detect_nested_dist(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     NestedDist nd;
     if (length == 8) {
-        status = Nested_Distacne_Detect(data[1], data[0], &data[2], &nd);
+        status = nested_distance_detect(data[1], data[0], &data[2], &nd);
         if (status == HF_TAG_OK) {
             length = sizeof(NestedDist);
             data = (uint8_t *)(&nd);
@@ -236,7 +243,7 @@ data_frame_tx_t *cmd_processor_detect_nested_dist(uint16_t cmd, uint16_t status,
 data_frame_tx_t *cmd_processor_mf1_nt_distance(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     NestedDist nd;
     if (length == 8) {
-        status = Nested_Distacne_Detect(data[1], data[0], &data[2], &nd);
+        status = nested_distance_detect(data[1], data[0], &data[2], &nd);
         if (status == HF_TAG_OK) {
             length = sizeof(NestedDist);
             data = (uint8_t *)(&nd);
@@ -253,7 +260,7 @@ data_frame_tx_t *cmd_processor_mf1_nt_distance(uint16_t cmd, uint16_t status, ui
 data_frame_tx_t *cmd_processor_mf1_nested_acquire(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     NestedCore ncs[SETS_NR];
     if (length == 10) {
-        status = Nested_Recover_Key(bytes_to_num(&data[2], 6), data[1], data[0], data[9], data[8], ncs);
+        status = nested_recover_key(bytes_to_num(&data[2], 6), data[1], data[0], data[9], data[8], ncs);
         if (status == HF_TAG_OK) {
             length = sizeof(ncs);
             data = (uint8_t *)(&ncs);
@@ -563,7 +570,7 @@ data_frame_tx_t *cmd_processor_set_mf1_anti_collision_res(uint16_t cmd, uint16_t
     } else {
         uint8_t uid_length = length - 3;
         if (is_valid_uid_size(uid_length)) {
-            nfc_tag_14a_coll_res_referen_t *info = get_mifare_coll_res();
+            nfc_tag_14a_coll_res_reference_t *info = get_mifare_coll_res();
             // copy sak
             info->sak[0] = data[0];
             // copy atqa
@@ -746,6 +753,48 @@ data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t status, 
     return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 8, slot_info);
 }
 
+data_frame_tx_t *cmd_processor_get_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    return data_frame_make(
+        cmd, 
+        STATUS_DEVICE_SUCCESS, 
+        BLE_CONNECT_KEY_LEN_MAX, // 6
+        settings_get_ble_connect_key() // Get key point from config
+    );
+}
+
+data_frame_tx_t *cmd_processor_set_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    if (length == BLE_CONNECT_KEY_LEN_MAX) {
+        // Must be 6 ASCII characters, can only be 0-9.
+        bool is_valid_key = true;
+        for (uint8_t i = 0; i < BLE_CONNECT_KEY_LEN_MAX; i++) {
+            if (data[i] < 48 || data[i] > 57) {
+                is_valid_key = false;
+                break;
+            }
+        }
+        if (is_valid_key) {
+            // Key is valid, we can update to config
+            settings_set_ble_connect_key(data);
+            advertising_stop();
+            set_ble_connect_key(settings_get_ble_connect_key());
+            // clear bond if exists
+            advertising_start(true);
+            status = STATUS_DEVICE_SUCCESS;
+        } else {
+            status = STATUS_PAR_ERR;
+        }
+    } else {
+        status = STATUS_PAR_ERR;
+    }
+    return data_frame_make(cmd, status, 0, NULL);
+}
+
+data_frame_tx_t *cmd_processor_del_ble_all_bonds(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+    advertising_stop();
+    delete_bonds_all();
+    return data_frame_make(cmd, STATUS_DEVICE_SUCCESS, 0, NULL);
+}
+
 #if defined(PROJECT_CHAMELEON_ULTRA)
 
 
@@ -758,7 +807,7 @@ data_frame_tx_t *before_reader_run(uint16_t cmd, uint16_t status, uint16_t lengt
     if (mode == DEVICE_MODE_READER) {
         return NULL;
     } else {
-        return data_frame_make(cmd, STATUS_DEVIEC_MODE_ERROR, 0, NULL);
+        return data_frame_make(cmd, STATUS_DEVICE_MODE_ERROR, 0, NULL);
     }
 }
 
@@ -808,6 +857,9 @@ static cmd_data_map_t m_data_cmd_map[] = {
     {    DATA_CMD_SET_BUTTON_PRESS_CONFIG,      NULL,                        cmd_processor_set_button_press_config,       NULL                   },
     {    DATA_CMD_GET_LONG_BUTTON_PRESS_CONFIG, NULL,                        cmd_processor_get_long_button_press_config,  NULL                   },
     {    DATA_CMD_SET_LONG_BUTTON_PRESS_CONFIG, NULL,                        cmd_processor_set_long_button_press_config,  NULL                   },
+    {    DATA_CMD_GET_BLE_CONNECT_KEY_CONFIG,   NULL,                        cmd_processor_get_ble_connect_key,           NULL                   },
+    {    DATA_CMD_SET_BLE_CONNECT_KEY_CONFIG,   NULL,                        cmd_processor_set_ble_connect_key,           NULL                   },
+    {    DATA_CMD_DELETE_ALL_BLE_BONDS,         NULL,                        cmd_processor_del_ble_all_bonds,             NULL                   },
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
 
@@ -878,14 +930,14 @@ void auto_response_data(data_frame_tx_t *resp) {
     if (is_usb_working()) {
         usb_cdc_write(resp->buffer, resp->length);
     } else if (is_nus_working()) {
-        nus_data_reponse(resp->buffer, resp->length);
+        nus_data_response(resp->buffer, resp->length);
     } else {
         NRF_LOG_ERROR("No connection valid found at response client.");
     }
 }
 
 
-/**@brief Function for prcoess data frame(cmd)
+/**@brief Function to process data frame(cmd)
  */
 void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     data_frame_tx_t *response = NULL;
@@ -922,7 +974,7 @@ void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint
             auto_response_data(response);
         }
     } else {
-        // response cmd unsupport.
+        // response cmd unsupported.
         response = data_frame_make(cmd, STATUS_INVALID_CMD, 0, NULL);
         auto_response_data(response);
         NRF_LOG_INFO("Data frame cmd invalid: %d,", cmd);

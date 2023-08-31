@@ -70,7 +70,8 @@ class ChameleonCom:
             error = None
             try:
                 # open serial port
-                self.serial_instance = serial.Serial(port=port, baudrate=115200)
+                self.serial_instance = serial.Serial(
+                    port=port, baudrate=115200)
             except Exception as e:
                 error = e
             finally:
@@ -78,10 +79,10 @@ class ChameleonCom:
                     raise OpenFailException(error)
             try:
                 self.serial_instance.dtr = 1  # must make dtr enable
-            except:
+            except Exception:
                 # not all serial support dtr, e.g. virtual serial over BLE
                 pass
-            self.serial_instance.timeout = 0  # noblock
+            self.serial_instance.timeout = 0  # do not block
             # clear variable
             self.send_data_queue.queue.clear()
             self.wait_response_map.clear()
@@ -98,7 +99,8 @@ class ChameleonCom:
         :return:
         """
         if not self.isOpen():
-            raise NotOpenException("Please call open() function to start device.")
+            raise NotOpenException(
+                "Please call open() function to start device.")
 
     @staticmethod
     def lrc_calc(array):
@@ -122,7 +124,7 @@ class ChameleonCom:
         self.event_closing.set()
         try:
             self.serial_instance.close()
-        except:
+        except Exception:
             pass
         finally:
             self.serial_instance = None
@@ -163,7 +165,7 @@ class ChameleonCom:
                         if data_buffer[data_position] != self.lrc_calc(data_buffer[0:1]):
                             data_position = 0
                             data_buffer.clear()
-                            print(f"Data frame sof lrc error.")
+                            print("Data frame sof lrc error.")
                             continue
                 elif data_position == 8:  # frame head lrc
                     if data_buffer[data_position] != self.lrc_calc(data_buffer[0:8]):
@@ -196,7 +198,8 @@ class ChameleonCom:
                                 if callable(fn_call):
                                     # delete wait task from map
                                     del self.wait_response_map[data_cmd]
-                                    fn_call(data_cmd, data_status, data_response)
+                                    fn_call(data_cmd, data_status,
+                                            data_response)
                                 else:
                                     self.wait_response_map[data_cmd]['response'] = Response(data_cmd, data_status,
                                                                                             data_response)
@@ -227,7 +230,8 @@ class ChameleonCom:
             task_close = task['close']
             # register to wait map
             if 'callback' in task and callable(task['callback']):
-                self.wait_response_map[task_cmd] = {'callback': task['callback']}  # The callback for this task
+                self.wait_response_map[task_cmd] = {
+                    'callback': task['callback']}  # The callback for this task
             else:
                 self.wait_response_map[task_cmd] = {'response': None}
             # set start time
@@ -258,7 +262,8 @@ class ChameleonCom:
                 if time.time() > self.wait_response_map[task_cmd]['end_time']:
                     if 'callback' in self.wait_response_map[task_cmd]:
                         # not sync, call function to notify timeout.
-                        self.wait_response_map[task_cmd]['callback'](task_cmd, None, None)
+                        self.wait_response_map[task_cmd]['callback'](
+                            task_cmd, None, None)
                     else:
                         # sync mode, set timeout flag
                         self.wait_response_map[task_cmd]['is_timeout'] = True
@@ -303,7 +308,8 @@ class ChameleonCom:
             del self.wait_response_map[cmd]
         # make data frame
         data_frame = self.make_data_frame_bytes(cmd, status, data)
-        task = {'cmd': cmd, 'frame': data_frame, 'timeout': timeout, 'close': close}
+        task = {'cmd': cmd, 'frame': data_frame,
+                'timeout': timeout, 'close': close}
         if callable(callback):
             task['callback'] = callback
         self.send_data_queue.put(task)

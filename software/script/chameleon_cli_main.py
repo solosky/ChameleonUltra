@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-import platform
 import sys
 import traceback
-import types
 import chameleon_com
-import chameleon_cmd
 import colorama
 import chameleon_cli_unit
 import chameleon_utils
@@ -29,7 +26,7 @@ LITE = r"""
 """
 
 # create by http://patorjk.com/software/taag/#p=display&f=ANSI%20Shadow&t=Chameleon%20Ultra
-BANNER = f"""
+BANNER = """
  ██████╗██╗  ██╗ █████╗ ██╗   ██╗███████╗██╗     ███████╗ █████╗ ██╗  ██╗
 ██╔════╝██║  ██║██╔══██╗███╗ ███║██╔════╝██║     ██╔════╝██╔══██╗███╗ ██║
 ██║     ███████║███████║████████║█████╗  ██║     █████╗  ██║  ██║████╗██║
@@ -45,13 +42,16 @@ class ChameleonCLI:
     """
 
     def __init__(self):
-        self.completer = chameleon_utils.CustomNestedCompleter.from_nested_dict(chameleon_cli_unit.root_commands)
-        self.session = prompt_toolkit.PromptSession(completer=self.completer, history=FileHistory(pathlib.Path.home() / ".chameleon_history"))
+        self.completer = chameleon_utils.CustomNestedCompleter.from_nested_dict(
+            chameleon_cli_unit.root_commands)
+        self.session = prompt_toolkit.PromptSession(completer=self.completer,
+                                                    history=FileHistory(pathlib.Path.home() / ".chameleon_history"))
 
         # new a device communication instance(only communication)
         self.device_com = chameleon_com.ChameleonCom()
 
-    def get_cmd_node(self, node: chameleon_utils.CLITree, cmdline: list[str]) -> tuple[chameleon_utils.CLITree, list[str]]:
+    def get_cmd_node(self, node: chameleon_utils.CLITree,
+                     cmdline: list[str]) -> tuple[chameleon_utils.CLITree, list[str]]:
         """
         Recursively traverse the command line tree to get to the matching node
 
@@ -92,19 +92,27 @@ class ChameleonCLI:
             start listen input.
         :return:
         """
-        if sys.version_info < (3,9):
+        if sys.version_info < (3, 9):
             raise Exception("This script requires at least Python 3.9")
 
         self.print_banner()
         closing = False
+        cmd_strs = []
         while True:
-            # wait user input
-            try:
-                cmd_str = self.session.prompt(ANSI(self.get_prompt())).strip()
-            except EOFError:
-                closing = True
-            except KeyboardInterrupt:
-                closing = True
+            if cmd_strs:
+                cmd_str = cmd_strs.pop(0)
+            else:
+                # wait user input
+                try:
+                    cmd_str = self.session.prompt(
+                        ANSI(self.get_prompt())).strip()
+                    cmd_strs = cmd_str.replace(
+                        "\r\n", "\n").replace("\r", "\n").split("\n")
+                    cmd_str = cmd_strs.pop(0)
+                except EOFError:
+                    closing = True
+                except KeyboardInterrupt:
+                    closing = True
 
             if closing or cmd_str in ["exit", "quit", "q", "e"]:
                 print("Bye, thank you.  ^.^ ")
@@ -124,18 +132,21 @@ class ChameleonCLI:
                 print("".ljust(18, "-") + "".ljust(10) + "".ljust(30, "-"))
                 for cmd_name, cmd_node in chameleon_cli_unit.root_commands.items():
                     cmd_title = f"{colorama.Fore.GREEN}{cmd_name}{colorama.Style.RESET_ALL}"
-                    help_line = (f" - {cmd_title}".ljust(37)) + f"[ {cmd_node.helptext} ]"
+                    help_line = (f" - {cmd_title}".ljust(37)
+                                 ) + f"[ {cmd_node.help_text} ]"
                     print(help_line)
                 continue
 
-            tree_node, arg_list = self.get_cmd_node(chameleon_cli_unit.root_commands[root_cmd], argv[1:])
+            tree_node, arg_list = self.get_cmd_node(
+                chameleon_cli_unit.root_commands[root_cmd], argv[1:])
 
             if not tree_node.cls:
                 # Found tree node is a group without an implementation, print children
                 print("".ljust(18, "-") + "".ljust(10) + "".ljust(30, "-"))
                 for child in tree_node.children:
                     cmd_title = f"{colorama.Fore.GREEN}{child.name}{colorama.Style.RESET_ALL}"
-                    help_line = (f" - {cmd_title}".ljust(37)) + f"[ {child.helptext} ]"
+                    help_line = (f" - {cmd_title}".ljust(37)
+                                 ) + f"[ {child.help_text} ]"
                     print(help_line)
                 continue
 
@@ -165,7 +176,8 @@ class ChameleonCLI:
             except (chameleon_utils.UnexpectedResponseError, chameleon_utils.ArgsParserError) as e:
                 print(f"{colorama.Fore.RED}{str(e)}{colorama.Style.RESET_ALL}")
             except Exception:
-                print(f"CLI exception: {colorama.Fore.RED}{traceback.format_exc()}{colorama.Style.RESET_ALL}")
+                print(
+                    f"CLI exception: {colorama.Fore.RED}{traceback.format_exc()}{colorama.Style.RESET_ALL}")
 
 
 if __name__ == '__main__':
