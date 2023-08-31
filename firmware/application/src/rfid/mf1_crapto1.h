@@ -53,9 +53,9 @@ uint32_t lfsr_rollback_word(struct Crypto1State *s, uint32_t in, int fb);
 #define BIT(x, n) ((x) >> (n) & 1)
 #define BEBIT(x, n) BIT(x, (n) ^ 24)
 #ifdef __OPTIMIZE_SIZE__
-int filter(uint32_t const x);
+uint32_t filter(uint32_t const x);
 #else
-static inline int filter(uint32_t const x) {
+static inline uint32_t filter(uint32_t const x) {
     uint32_t f;
 
     f  = 0xf22c0 >> (x       & 0xf) & 16;

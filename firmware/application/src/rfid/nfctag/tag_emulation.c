@@ -1,6 +1,7 @@
+#include "rfid_port.h"
 #include "crc_utils.h"
 #include "nfc_14a.h"
-#include "lf_tag_em.h"
+//#include "lf_tag_em.h"
 #include "nfc_mf1.h"
 #include "nfc_ntag.h"
 #include "fds_ids.h"
@@ -77,7 +78,7 @@ static uint16_t m_slot_config_crc;
  */
 static tag_base_handler_map_t tag_base_map[] = {
     // Low -frequency ID card simulation
-    { TAG_SENSE_LF,    TAG_TYPE_EM410X,         lf_tag_em410x_data_loadcb,    lf_tag_em410x_data_savecb,    lf_tag_em410x_data_factory,    &m_tag_data_lf },
+    //{ TAG_SENSE_LF,    TAG_TYPE_EM410X,         lf_tag_em410x_data_loadcb,    lf_tag_em410x_data_savecb,    lf_tag_em410x_data_factory,    &m_tag_data_lf },
     // MF1 tag simulation
     { TAG_SENSE_HF,    TAG_TYPE_MIFARE_Mini,    nfc_tag_mf1_data_loadcb,      nfc_tag_mf1_data_savecb,      nfc_tag_mf1_data_factory,      &m_tag_data_hf },
     { TAG_SENSE_HF,    TAG_TYPE_MIFARE_1024,    nfc_tag_mf1_data_loadcb,      nfc_tag_mf1_data_savecb,      nfc_tag_mf1_data_factory,      &m_tag_data_hf },
@@ -359,11 +360,11 @@ static void tag_emulation_sense_switch_all(bool enable) {
     } else {
         nfc_tag_14a_sense_switch(false);
     }
-    if (slotConfig.group[slot].tag_lf != TAG_TYPE_UNKNOWN) {
-        lf_tag_125khz_sense_switch(enable);
-    } else {
-        lf_tag_125khz_sense_switch(false);
-    }
+    // if (slotConfig.group[slot].tag_lf != TAG_TYPE_UNKNOWN) {
+    //     lf_tag_125khz_sense_switch(enable);
+    // } else {
+    //     lf_tag_125khz_sense_switch(false);
+    // }
 }
 
 /**
@@ -377,7 +378,7 @@ void tag_emulation_sense_switch(tag_sense_type_t type, bool enable) {
     // Switch high frequency
     if (type == TAG_SENSE_HF) nfc_tag_14a_sense_switch(enable);
     // Switch low frequency
-    if (type == TAG_SENSE_LF) lf_tag_125khz_sense_switch(enable);
+    //if (type == TAG_SENSE_LF) lf_tag_125khz_sense_switch(enable);
 }
 
 /**

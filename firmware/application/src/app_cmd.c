@@ -1,9 +1,9 @@
 #include "fds_util.h"
 #include "bsp_time.h"
 #include "bsp_delay.h"
-#include "usb_main.h"
-#include "rfid_main.h"
-#include "ble_main.h"
+//#include "usb_main.h"
+//#include "rfid_main.h"
+//#include "ble_main.h"
 #include "syssleep.h"
 #include "tag_emulation.h"
 #include "hex_utils.h"
@@ -12,8 +12,8 @@
 #include "app_status.h"
 #include "tag_persistence.h"
 #include "nrf_pwr_mgmt.h"
-#include "settings.h"
-#include "delayed_reset.h"
+//#include "settings.h"
+//#include "delayed_reset.h"
 
 
 #define NRF_LOG_MODULE_NAME app_cmd

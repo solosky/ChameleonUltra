@@ -12,7 +12,7 @@ NRF_LOG_MODULE_REGISTER();
 #include "crc_utils.h"
 #include "nfc_mf1.h"
 
-#include "rfid_main.h"
+#include "rfid_port.h"
 #include "syssleep.h"
 #include "tag_emulation.h"
 
