@@ -65,8 +65,7 @@
 #include "hw_connect.h"
 
 
-static void on_error(void)
-{
+static void on_error(void) {
     NRF_LOG_FINAL_FLUSH();
 
 #if NRF_MODULE_ENABLED(NRF_LOG_BACKEND_RTT)
@@ -80,26 +79,22 @@ static void on_error(void)
 }
 
 
-void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t * p_file_name)
-{
+void app_error_handler(uint32_t error_code, uint32_t line_num, const uint8_t *p_file_name) {
     NRF_LOG_ERROR("%s:%d", p_file_name, line_num);
     on_error();
 }
 
 
-void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
-{
+void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info) {
     NRF_LOG_ERROR("Received a fault! id: 0x%08x, pc: 0x%08x, info: 0x%08x", id, pc, info);
     on_error();
 }
 
 
-void app_error_handler_bare(uint32_t error_code)
-{
+void app_error_handler_bare(uint32_t error_code) {
     NRF_LOG_ERROR("Received an error: 0x%08x!", error_code);
     on_error();
 }
-
 
 static uint8_t m_led_flash_state = 0;
 static bool m_led_flash_setp = 0;
@@ -110,18 +105,17 @@ void flash_led(void *p_event_data, uint16_t event_size) {
     set_slot_light_color(m_led_flash_state);
 
     int led_flash_speed;
-    switch (m_led_flash_state)
-    {
-    case 0:
-    default:
-        led_flash_speed = 250000;
-        break;
-    case 1:
-        led_flash_speed = 150000;
-        break;
-    case 2:
-        led_flash_speed = 50000;
-        break;
+    switch (m_led_flash_state) {
+        case 0:
+        default:
+            led_flash_speed = 250000;
+            break;
+        case 1:
+            led_flash_speed = 150000;
+            break;
+        case 2:
+            led_flash_speed = 50000;
+            break;
     }
 
     if (m_led_flash_setp == 0) {
@@ -147,10 +141,8 @@ void flash_led(void *p_event_data, uint16_t event_size) {
 /**
  * @brief Function notifies certain events in DFU process.
  */
-static void dfu_observer(nrf_dfu_evt_type_t evt_type)
-{
-    switch (evt_type)
-    {
+static void dfu_observer(nrf_dfu_evt_type_t evt_type) {
+    switch (evt_type) {
         case NRF_DFU_EVT_DFU_INITIALIZED:
             nrfx_systick_init();
             m_led_flash_state = 0;
@@ -175,15 +167,14 @@ static void dfu_observer(nrf_dfu_evt_type_t evt_type)
 }
 
 /**
- * It is normal that the DFU will automatically reboot the entire hardware 
+ * It is normal that the DFU will automatically reboot the entire hardware
  * after the USB connection is not started for a period of time.
- * 
+ *
  */
 
 /**@brief Function for application main entry. */
-int main(void)
-{
-    uint32_t ret_val;
+int main(void) {
+    ret_code_t ret_val;
 
     // Must to init hardware connect.
     hw_connect_init();

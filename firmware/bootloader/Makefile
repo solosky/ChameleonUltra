@@ -10,6 +10,7 @@ SRC_FILES += \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/dfu_public_key.c \
   $(SRC_COMMON)/hw_connect.c \
+  $(SRC_COMMON)/libc_nano_stubs.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_systick.c \
@@ -101,6 +102,7 @@ SRC_FILES += \
 INC_FOLDERS += \
   $(PROJ_DIR) \
   ${SRC_COMMON} \
+  $(SDK_ROOT)/components \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components/libraries/crypto/backend/micro_ecc \
   $(SDK_ROOT)/components/libraries/memobj \
@@ -172,6 +174,10 @@ else
 $(error Chameleon <Bootloader>: No device type define.)
 endif
 
+ifeq (${SDK_VALIDATION}, 1)
+SRC_FILES += \
+  $(SRC_COMMON)/sdk_validation.c
+endif
 
 # Optimization flags
 OPT = -Os -g3
@@ -251,6 +257,15 @@ TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
 
 include $(TEMPLATE_PATH)/Makefile.common
 
+# tolerate warnings in newer gcc versions
+# need to be called after $(TEMPLATE_PATH)/Makefile.common
+CC_VERSION = $(shell $(CC) -dumpversion 2>/dev/null|sed 's/\..*//')
+CC_VERSION := $(or $(strip $(CC_VERSION)),0)
+ifeq ($(shell expr $(CC_VERSION) \>= 12), 1)
+    # avoid a couple of false warnings in nRF SDK
+    CFLAGS += --param=min-pagesize=0
+endif
+
 $(foreach target, $(TARGETS), $(call define_target, $(target)))
 
 .PHONY: flash flash_softdevice erase
@@ -267,8 +282,23 @@ flash_softdevice:
 	nrfjprog -f nrf52 --program $(SDK_ROOT)/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --sectorerase
 	nrfjprog -f nrf52 --reset
 
+# Flash with ST-Link + OpenOCD
+flash_stlink:
+	@echo Generating settings...
+	nrfutil settings generate --family NRF52840 --application $(OUTPUT_DIRECTORY)/application.hex --application-version 1 --bootloader-version 1 --bl-settings-version 2 $(OUTPUT_DIRECTORY)/settings.hex
+	@echo Merging required files
+	mergehex --merge $(OUTPUT_DIRECTORY)/bootloader.hex $(OUTPUT_DIRECTORY)/settings.hex --output $(OUTPUT_DIRECTORY)/bootloader_settings.hex
+	mergehex --merge $(OUTPUT_DIRECTORY)/bootloader_settings.hex $(OUTPUT_DIRECTORY)/application.hex $(SDK_ROOT)/components/softdevice/s140/hex/s140_nrf52_7.2.0_softdevice.hex --output $(OUTPUT_DIRECTORY)/project.hex
+	@echo Flashing...
+	openocd -f interface/stlink.cfg -f target/nrf52.cfg -c "program $(OUTPUT_DIRECTORY)/project.hex verify reset ; shutdown"
+
 erase:
 	nrfjprog -f nrf52 --eraseall
+
+# Erase with ST-Link
+erase_stlink:
+	openocd -f interface/stlink.cfg -f target/nrf52.cfg -c "flash init; init; reset halt; flash erase_sector 0 1 last; exit"
+	@echo Successfully deleted everything!
 
 # Config project
 SDK_CONFIG_FILE := $(PROJ_DIR)/sdk_config.h
