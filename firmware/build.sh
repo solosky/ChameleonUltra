@@ -4,7 +4,7 @@ if [[ $BASH_SOURCE = */* ]]; then
   cd -- "${BASH_SOURCE%/*}/" || exit
 fi
 
-softdevice=s140
+softdevice=s112
 softdevice_version=7.2.0
 softdevice_id=0x0100
 
@@ -56,7 +56,7 @@ rm -rf "objects"
     ${device_type}-dfu-app.zip
 
   nrfutil nrf5sdk-tools settings generate \
-    --family NRF52840 \
+    --family NRF52832 \
     --application application.hex --application-version $application_version \
     --softdevice softdevice.hex \
     --bootloader-version $bootloader_version --bl-settings-version 2 \
