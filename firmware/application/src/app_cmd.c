@@ -1073,7 +1073,7 @@ static void auto_response_data(data_frame_tx_t *resp) {
 		NRF_LOG_ERROR("No connection valid found at response client.");
 	}
     #else
-    nus_data_reponse(resp->buffer, resp->length);
+    nus_data_response(resp->buffer, resp->length);
     #endif
 }
 

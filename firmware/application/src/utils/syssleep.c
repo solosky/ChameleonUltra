@@ -59,7 +59,7 @@ void sleep_timer_start(uint32_t time_ms) {
 #else
     ret_code_t err_code = app_timer_start(m_app_sleep_timer, APP_TIMER_TICKS(time_ms), NULL);
     APP_ERROR_CHECK(err_code);
-#if
+#endif
 }
 
 /**

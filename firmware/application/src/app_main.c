@@ -341,7 +341,7 @@ static void system_off_enter(void) {
 
 
     // 需要配置为浮空模拟输入且不上下拉的IO
-    uint32_t gpio_cfg_default_nopull[] = {
+    uint32_t gpio_cfg_default_no_pull[] = {
 #if defined(PROJECT_CHAMELEON_ULTRA)
         HF_SPI_SELECT,
         HF_SPI_MISO,

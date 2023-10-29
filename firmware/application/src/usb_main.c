@@ -188,4 +188,5 @@ bool is_usb_working(void) {
 #else
 #include <stdbool.h>
 volatile bool g_usb_led_marquee_enable = true;
+volatile bool g_usb_port_opened = false;
 #endif

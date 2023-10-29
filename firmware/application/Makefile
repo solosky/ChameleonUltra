@@ -7,6 +7,9 @@ $(OUTPUT_DIRECTORY)/application.out: \
 
 CHAMELEON_ULTRA := ultra
 CHAMELEON_LITE  := lite
+APP_FW_VER_MAJOR := 1
+APP_FW_VER_MINOR := 1
+
 # What device is it?
 CURRENT_DEVICE_TYPE := ${CHAMELEON_ULTRA}
 
@@ -206,7 +209,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components/libraries/experimental_task_manager \
   $(SDK_ROOT)/components/ble/ble_services/ble_hrs_c \
-  $(SDK_ROOT)/components/softdevice/S112/headers/nrf52 \
+  $(SDK_ROOT)/components/softdevice/s112/headers/nrf52 \
   $(SDK_ROOT)/components/nfc/ndef/connection_handover/le_oob_rec \
   $(SDK_ROOT)/components/libraries/queue \
   $(SDK_ROOT)/components/libraries/pwr_mgmt \
@@ -255,7 +258,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/hci \
   $(SDK_ROOT)/components/libraries/usbd/class/hid/kbd \
   $(SDK_ROOT)/components/libraries/timer \
-  $(SDK_ROOT)/components/softdevice/S112/headers \
+  $(SDK_ROOT)/components/softdevice/s112/headers \
   $(SDK_ROOT)/integration/nrfx \
   $(SDK_ROOT)/components/nfc/t4t_parser/tlv \
   $(SDK_ROOT)/components/libraries/sortlist \
@@ -407,7 +410,8 @@ endif
 ifndef APP_FW_VER_MINOR
 $(error APP_FW_VER_MINOR is not defined, please define it)
 endif
-CFLAGS += -DAPP_FW_VER_MAJOR=$(APP_FW_VER_MAJOR) -DAPP_FW_VER_MINOR=$(APP_FW_VER_MINOR)
+#CFLAGS += -DAPP_FW_VER_MAJOR=$(APP_FW_VER_MAJOR) -DAPP_FW_VER_MINOR=$(APP_FW_VER_MINOR)
+CFLAGS += -DAPP_FW_VER_MAJOR=1 -DAPP_FW_VER_MINOR=1
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
@@ -485,7 +489,7 @@ flash: default
 # Flash softdevice
 flash_softdevice:
 	@echo Flashing: S112_nrf52_7.2.0_softdevice.hex
-	nrfjprog -f nrf52 --program $(SDK_ROOT)/components/softdevice/S112/hex/S112_nrf52_7.2.0_softdevice.hex --sectorerase
+	nrfjprog -f nrf52 --program $(SDK_ROOT)/components/softdevice/s112/hex/s112_nrf52_7.2.0_softdevice.hex --sectorerase
 	nrfjprog -f nrf52 --reset
 
 # Flash with ST-Link + OpenOCD
