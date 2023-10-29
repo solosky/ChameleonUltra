@@ -874,7 +874,7 @@ int main(void) {
     gpio_te_init();           // Initialize GPIO matrix library
     app_timers_init();        // Initialize soft timer
     power_management_init();  // Power management initialization        
-     #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+    #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
     usb_cdc_init();           // USB cdc emulation initialization
     #endif
     ble_slave_init();         // Bluetooth protocol stack initialization
@@ -917,9 +917,9 @@ int main(void) {
         // USB event process
         #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
         while (app_usbd_event_queue_process());
+        #endif
         // WDT refresh
         bsp_wdt_feed();
-        #endif
         // No task to process, system sleep enter.
         // If system idle sometime, we can enter deep sleep state.
         // Some task process done, we can enter cpu sleep state.
