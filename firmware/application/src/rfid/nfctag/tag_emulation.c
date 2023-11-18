@@ -57,7 +57,7 @@ static tag_slot_config_t slotConfig ALIGN_U32 = {
     .group = {
         { .enable = true,  .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_MIFARE_1024, .tag_lf = TAG_TYPE_EM410X,       },   // 1
         { .enable = true,  .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_MIFARE_1024, .tag_lf = TAG_TYPE_UNKNOWN,      },   // 2
-        { .enable = true,  .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_UNKNOWN,     .tag_lf = TAG_TYPE_EM410X,       },   // 3
+        { .enable = true,  .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_NTAG_215,     .tag_lf = TAG_TYPE_EM410X,       },   // 3
         { .enable = false, .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_UNKNOWN,     .tag_lf = TAG_TYPE_UNKNOWN,      },   // 4
         { .enable = false, .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_UNKNOWN,     .tag_lf = TAG_TYPE_UNKNOWN,      },   // 5
         { .enable = false, .reserved1 = 0, .reserved2 = 0, .tag_hf = TAG_TYPE_UNKNOWN,     .tag_lf = TAG_TYPE_UNKNOWN,      },   // 6
@@ -278,7 +278,7 @@ static void delete_data_by_tag_type(uint8_t slot, tag_sense_type_t sense_type) {
 void tag_emulation_load_data(void) {
     uint8_t slot = tag_emulation_get_slot();
     load_data_by_tag_type(slot, slotConfig.group[slot].tag_hf);
-    load_data_by_tag_type(slot, slotConfig.group[slot].tag_lf);
+    //load_data_by_tag_type(slot, slotConfig.group[slot].tag_lf);
 }
 
 /**
@@ -287,7 +287,7 @@ void tag_emulation_load_data(void) {
 void tag_emulation_save_data(void) {
     uint8_t slot = tag_emulation_get_slot();
     save_data_by_tag_type(slot, slotConfig.group[slot].tag_hf);
-    save_data_by_tag_type(slot, slotConfig.group[slot].tag_lf);
+    //save_data_by_tag_type(slot, slotConfig.group[slot].tag_lf);
 }
 
 /**
@@ -461,7 +461,7 @@ uint8_t tag_emulation_get_slot(void) {
  */
 void tag_emulation_set_slot(uint8_t index) {
     slotConfig.config.activated = index;    // Re -set to the new switched card slot
-    rgb_marquee_reset(); // force animation color refresh according to new slot
+   // rgb_marquee_reset(); // force animation color refresh according to new slot
 }
 
 /**
@@ -593,6 +593,15 @@ void tag_emulation_factory_init(void) {
         bool is_slot3_lf_data_exists = fds_is_exists(map_info.id, map_info.key);
         if (!is_slot3_lf_data_exists) {
             tag_emulation_factory_data(2, slotConfig.group[2].tag_lf);
+        }
+    }
+
+    if (slotConfig.group[2].enable && slotConfig.group[2].tag_hf != TAG_TYPE_UNKNOWN) {
+        // Initialize a low -frequency EM410X card in slot 3, if it does not exist.
+        get_fds_map_by_slot_sense_type_for_dump(2, TAG_SENSE_HF, &map_info);
+        bool is_slot3_hf_data_exists = fds_is_exists(map_info.id, map_info.key);
+        if (!is_slot3_hf_data_exists) {
+            tag_emulation_factory_data(2, slotConfig.group[2].tag_hf);
         }
     }
 }
