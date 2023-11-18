@@ -41,7 +41,7 @@ static volatile bool m_is_lf_emulating = false;
 // The timer of the delivery card number, we use the timer 3
 const nrfx_timer_t m_timer_send_id = NRFX_TIMER_INSTANCE(3);
 // Cache label type
-static tag_specific_type_t m_tag_type = TAG_TYPE_UNKNOWN;
+static tag_specific_type_t m_tag_type = TAG_TYPE_UNDEFINED;
 
 /**
  * @brief Convert the card number of EM410X to the memory layout of U64 and calculate the puppet school inspection
@@ -299,7 +299,7 @@ static void lpcomp_event_handler(nrf_lpcomp_event_t event) {
         g_usb_led_marquee_enable = false;
 
         // LED status update
-        set_slot_light_color(2);
+        set_slot_light_color(RGB_BLUE);
         TAG_FIELD_LED_ON()
 
         //In any case, every time the state finds changes, you need to reset the BIT location of the sending
@@ -396,7 +396,7 @@ int lf_tag_em410x_data_loadcb(tag_specific_type_t type, tag_data_buffer_t *buffe
  */
 int lf_tag_em410x_data_savecb(tag_specific_type_t type, tag_data_buffer_t *buffer) {
     // Make sure to load this label before allowing saving
-    if (m_tag_type != TAG_TYPE_UNKNOWN) {
+    if (m_tag_type != TAG_TYPE_UNDEFINED) {
         // Just save the original card package directly
         return LF_EM410X_TAG_ID_SIZE;
     } else {
@@ -411,13 +411,13 @@ int lf_tag_em410x_data_savecb(tag_specific_type_t type, tag_data_buffer_t *buffe
  */
 bool lf_tag_em410x_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
     // default id, must to align(4), more word...
-    uint8_t tag_id[8] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x88 };
+    uint8_t tag_id[5] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x88 };
     // Write the data in Flash
     tag_sense_type_t sense_type = get_sense_type_from_tag_type(tag_type);
     fds_slot_record_map_t map_info; // Get the special card slot FDS record information
     get_fds_map_by_slot_sense_type_for_dump(slot, sense_type, &map_info);
     //Call the blocked FDS to write the function, and write the data of the specified field type of the card slot into the Flash
-    bool ret = fds_write_sync(map_info.id, map_info.key, sizeof(tag_id) / 4, (uint8_t *)tag_id);
+    bool ret = fds_write_sync(map_info.id, map_info.key, sizeof(tag_id), (uint8_t *)tag_id);
     if (ret) {
         NRF_LOG_INFO("Factory slot data success.");
     } else {

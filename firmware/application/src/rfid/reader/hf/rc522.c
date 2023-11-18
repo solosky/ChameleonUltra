@@ -24,6 +24,7 @@ NRF_LOG_MODULE_REGISTER();
 #define RC522_DOSEL nrf_gpio_pin_clear(HF_SPI_SELECT)
 #define RC522_UNSEL nrf_gpio_pin_set(HF_SPI_SELECT)
 
+bool g_is_reader_antenna_on = false;
 
 //CRC 14A calculator, when the MCU performance is too weak, or when the MCU is busy, you can use 522 to calculate CRC
 static uint8_t m_crc_computer = 0;
@@ -196,9 +197,11 @@ void pcd_14a_reader_reset(void) {
         write_register_single(CommandReg, PCD_IDLE);
         write_register_single(CommandReg, PCD_RESET);
 
-        // Switch antenna
-        clear_register_mask(TxControlReg, 0x03);
-        set_register_mask(TxControlReg, 0x03);
+        bsp_delay_ms(10);
+
+        // Then default does not allow the antenna
+        // Please don't continue to make high -frequency antennas
+        pcd_14a_reader_antenna_off();
 
         // Disable the timer of 522, use the MCU timer timeout time
         write_register_single(TModeReg, 0x00);
@@ -208,9 +211,7 @@ void pcd_14a_reader_reset(void) {
         // Define common mode and receive common mode and receiveMiFare cartoon communication, CRC initial value 0x6363
         write_register_single(ModeReg, 0x3D);
 
-        // Then default does not allow the antenna
-        // Please don't continue to make high -frequency antennas
-        pcd_14a_reader_antenna_off();
+        bsp_delay_ms(10);
     }
 }
 
@@ -255,15 +256,13 @@ uint16_t pcd_14a_reader_timeout_get() {
 *          POUTLENBIT: Bit the length of the data
 * @retval : Status value mi_ok, successful
 */
-uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command, uint8_t *pIn, uint8_t  InLenByte, uint8_t *pOut, uint16_t *pOutLenBit, uint16_t maxOutLenBit) {
-    uint8_t status      = HF_ERR_STAT;
+uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command, uint8_t *pIn, uint8_t InLenByte, uint8_t *pOut, uint16_t *pOutLenBit, uint16_t maxOutLenBit) {
+    uint8_t status      = STATUS_HF_ERR_STAT;
     uint8_t waitFor     = 0x00;
     uint8_t lastBits    = 0;
     uint8_t n           = 0;
     uint8_t pcd_err_val = 0;
     uint8_t not_timeout = 0;
-    // Reset the length of the received data
-    *pOutLenBit         = 0;
 
     switch (Command) {
         case PCD_AUTHENT:                       //  MiFare certification
@@ -289,8 +288,10 @@ uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command, uint8_t *pIn, uint8_t  In
     if (pOut == NULL) {
         // If the developer does not need to receive data, then return directly after the sending!
         while ((read_register_single(Status2Reg) & 0x07) == 0x03);
-        return HF_TAG_OK;
+        return STATUS_HF_TAG_OK;
     }
+    // Reset the length of the received data
+    *pOutLenBit         = 0;
 
     bsp_set_timer(g_timeout_auto_timer, 0);         // Before starting the operation, return to zero over time counting
 
@@ -315,24 +316,24 @@ uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command, uint8_t *pIn, uint8_t  In
             if (pcd_err_val & 0x01) {               // ProtocolErr Error only appears in the following two cases:
                 if (Command == PCD_AUTHENT) {       // During the execution of the MFAUTHENT command, if the number of bytes received by a data stream, the position of the place
                     // Therefore, we need to deal with it well, assuming that there are problems during the verification process, then we need to think that this is normal
-                    status = MF_ERR_AUTH;
+                    status = STATUS_MF_ERR_AUTH;
                 } else {                            // If the SOF is wrong, the position is set up and the receiver is automatically cleared during the start -up stage, which is effective at the rate of 106kbd
                     NRF_LOG_INFO("Protocol error\n");
-                    status = HF_ERR_STAT;
+                    status = STATUS_HF_ERR_STAT;
                 }
             } else if (pcd_err_val & 0x02) {
                 // Detecting whether there are even strange errors
                 NRF_LOG_INFO("Parity error\n");
-                status = HF_ERR_PARITY;
+                status = STATUS_HF_ERR_PARITY;
             } else if (pcd_err_val & 0x04) {        // Detect whether there are CRC errors
                 NRF_LOG_INFO("CRC error\n");
-                status = HF_ERR_CRC;
+                status = STATUS_HF_ERR_CRC;
             } else if (pcd_err_val & 0x08) {        // There is a conflict to detect the label
                 NRF_LOG_INFO("Collision tag\n");
-                status = HF_COLLISION;
+                status = STATUS_HF_COLLISION;
             } else {                                // There are other unrepaired abnormalities
                 NRF_LOG_INFO("HF error: 0x%0x2\n", pcd_err_val);
-                status = HF_ERR_STAT;
+                status = STATUS_HF_ERR_STAT;
             }
         } else {
             // Occasionally occur
@@ -350,25 +351,25 @@ uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command, uint8_t *pIn, uint8_t  In
                     // Read all the data in FIFO
                     read_register_buffer(FIFODataReg, pOut, n);
                     // Transmission instructions can be considered success when reading normal data!
-                    status = HF_TAG_OK;
+                    status = STATUS_HF_TAG_OK;
                 } else {
                     NRF_LOG_INFO("pcd_14a_reader_bytes_transfer receive response overflow: %d, max = %d\n", *pOutLenBit, maxOutLenBit);
                     // We can't pass the problem with problems, which is meaningless for the time being
                     *pOutLenBit = 0;
                     // Since there is a problem with the data, let's notify the upper layer and inform me
-                    status = HF_ERR_STAT;
+                    status = STATUS_HF_ERR_STAT;
                 }
             } else {
                 // Non -transmitted instructions, the execution is completed without errors and considered success!
-                status = HF_TAG_OK;
+                status = STATUS_HF_TAG_OK;
             }
         }
     } else {
-        status = HF_TAG_NO;
+        status = STATUS_HF_TAG_NO;
         // NRF_LOG_INFO("Tag lost(timeout).\n");
     }
 
-    if (status != HF_TAG_OK) {
+    if (status != STATUS_HF_TAG_OK) {
         // If there are certain operations,
         // We may need to remove MFCrypto1On This register logo,
         // Because it may be because of the error encryption communication caused by verification
@@ -444,7 +445,7 @@ uint8_t pcd_14a_reader_bits_transfer(uint8_t *pTx, uint16_t  szTxBits, uint8_t *
     clear_register_mask(MfRxReg, 0x10);  // Enable Qiqi school inspection
 
     // Simply judge the length of data transmission
-    if (status != HF_TAG_OK) {
+    if (status != STATUS_HF_TAG_OK) {
         // NRF_LOG_INFO("pcd_14a_reader_bytes_transfer error status: %d\n", status);
         return status;
     }
@@ -464,7 +465,7 @@ uint8_t pcd_14a_reader_bits_transfer(uint8_t *pTx, uint16_t  szTxBits, uint8_t *
             NRF_LOG_INFO("pcd_14a_reader_bits_transfer decode parity data overflow: %d, max = %d\n", *pRxLenBit, szRxLenBitMax);
             // There must be an overflow here, and the length of the data that is valid is reset to avoid misjudgment from external calls.
             *pRxLenBit = 0;
-            return HF_ERR_STAT;
+            return STATUS_HF_ERR_STAT;
         }
 
         // The process of the separation and dissection process of the unprecedented verification and the data
@@ -478,12 +479,192 @@ uint8_t pcd_14a_reader_bits_transfer(uint8_t *pTx, uint16_t  szTxBits, uint8_t *
             pRxPar[i - 1] = (buffer[i] & (1 << (i - 1))) >> (i - 1);
         }
     }
-    return HF_TAG_OK;
+    return STATUS_HF_TAG_OK;
+}
+
+/**
+* @brief  : Through RC522 and ISO14443 cartoon communication
+* @param  : Command: RC522 command word
+*          PIN: Data sent to the card through RC522
+*          Inlenbyte: The byte length of sending the data
+*          POUT: The receiving card returns the data
+*          POUTLENBIT: Bit the length of the data
+*          FLAGS:
+*            - PCD_TRANSMIT_FLAG_NO_RESET_MF_CRYPTO1_ON: Do not reset MFCrypto1On
+* @retval : Status value mi_ok, successful
+*/
+uint8_t pcd_14a_reader_bytes_transfer_flags(uint8_t Command, uint8_t *pIn, uint8_t InLenByte, uint8_t *pOut, uint16_t *pOutLenBit, uint16_t maxOutLenBit, uint32_t flags) {
+    uint8_t status      = STATUS_HF_ERR_STAT;
+    uint8_t waitFor     = 0x00;
+    uint8_t lastBits    = 0;
+    uint8_t n           = 0;
+    uint8_t pcd_err_val = 0;
+    uint8_t not_timeout = 0;
+
+    switch (Command) {
+        case PCD_AUTHENT:                       //  MiFare certification
+            waitFor = 0x10;                     //  Query the free interrupt logo when the certification card is waiting
+            break;
+
+        case PCD_TRANSCEIVE:
+            waitFor = 0x30;                     //  Inquiry the receiving interrupt logo position and Leisure interrupt logo
+            break;
+    }
+
+    write_register_single(CommandReg,       PCD_IDLE);      //  Flushbuffer clearing the internal FIFO read and writing pointer and ErRreg's Bufferovfl logo position is cleared
+    clear_register_mask(ComIrqReg,      0x80);          //  When Set1 is cleared, the shielding position of commonricqreg is clear zero
+    set_register_mask(FIFOLevelReg,     0x80);          //  Write an empty order
+
+    write_register_buffer(FIFODataReg, pIn, InLenByte); // Write data into FIFODATA
+    write_register_single(CommandReg, Command);             // Write command
+
+    if (Command == PCD_TRANSCEIVE) {
+        set_register_mask(BitFramingReg, 0x80);     // StartSend places to start the data to send this bit and send and receive commands when it is valid
+    }
+
+    if (pOut == NULL) {
+        // If the developer does not need to receive data, then return directly after the sending!
+        while ((read_register_single(Status2Reg) & 0x07) == 0x03);
+        return STATUS_HF_TAG_OK;
+    }
+    // Reset the length of the received data
+    *pOutLenBit         = 0;
+
+    bsp_set_timer(g_timeout_auto_timer, 0);         // Before starting the operation, return to zero over time counting
+
+    do {
+        n = read_register_single(ComIrqReg);                // Read the communication interrupt register to determine whether the current IO task is completed!
+        not_timeout = NO_TIMEOUT_1MS(g_timeout_auto_timer, g_com_timeout_ms);
+    } while (not_timeout && (!(n & waitFor)));  // Exit conditions: timeout interruption, interrupt with empty command commands
+    // NRF_LOG_INFO("N = %02x\n", n);
+
+    if (Command == PCD_TRANSCEIVE) {
+        clear_register_mask(BitFramingReg, 0x80);       // Clean up allows the startsend bit and the bit length position
+    }
+
+    // Whether to receive timeout
+    if (not_timeout) {
+        // First determine whether there is a place where there is an error register
+        if (n & 0x02) {
+            // Error occur
+            // Read an error logo register BufferOfI CollErr ParityErr ProtocolErr
+            pcd_err_val = read_register_single(ErrorReg);
+            // Detect whether there are abnormalities
+            if (pcd_err_val & 0x01) {               // ProtocolErr Error only appears in the following two cases:
+                if (Command == PCD_AUTHENT) {       // During the execution of the MFAUTHENT command, if the number of bytes received by a data stream, the position of the place
+                    // Therefore, we need to deal with it well, assuming that there are problems during the verification process, then we need to think that this is normal
+                    status = STATUS_MF_ERR_AUTH;
+                } else {                            // If the SOF is wrong, the position is set up and the receiver is automatically cleared during the start -up stage, which is effective at the rate of 106kbd
+                    NRF_LOG_INFO("Protocol error\n");
+                    status = STATUS_HF_ERR_STAT;
+                }
+            } else if (pcd_err_val & 0x02) {
+                // Detecting whether there are even strange errors
+                NRF_LOG_INFO("Parity error\n");
+                status = STATUS_HF_ERR_PARITY;
+            } else if (pcd_err_val & 0x04) {        // Detect whether there are CRC errors
+                NRF_LOG_INFO("CRC error\n");
+                status = STATUS_HF_ERR_CRC;
+            } else if (pcd_err_val & 0x08) {        // There is a conflict to detect the label
+                NRF_LOG_INFO("Collision tag\n");
+                status = STATUS_HF_COLLISION;
+            } else {                                // There are other unrepaired abnormalities
+                NRF_LOG_INFO("HF error: 0x%0x2\n", pcd_err_val);
+                status = STATUS_HF_ERR_STAT;
+            }
+        } else {
+            // Occasionally occur
+            // NRF_LOG_INFO("COM OK\n");
+            if (Command == PCD_TRANSCEIVE) {
+                n = read_register_single(FIFOLevelReg);                             // Read the number of bytes saved in FIFO
+                if (n == 0) { n = 1; }
+
+                lastBits = read_register_single(Control522Reg) & 0x07;          // Finally receive the validity of the byte
+
+                if (lastBits) { *pOutLenBit = (n - 1) * 8 + lastBits; } // N -byte number minus 1 (last byte)+ the number of bits of the last bit The total number of data readings read
+                else { *pOutLenBit = n * 8; }                           // Finally received the entire bytes received by the byte valid
+
+                if (*pOutLenBit <= maxOutLenBit) {
+                    // Read all the data in FIFO
+                    read_register_buffer(FIFODataReg, pOut, n);
+                    // Transmission instructions can be considered success when reading normal data!
+                    status = STATUS_HF_TAG_OK;
+                } else {
+                    NRF_LOG_INFO("pcd_14a_reader_bytes_transfer receive response overflow: %d, max = %d\n", *pOutLenBit, maxOutLenBit);
+                    // We can't pass the problem with problems, which is meaningless for the time being
+                    *pOutLenBit = 0;
+                    // Since there is a problem with the data, let's notify the upper layer and inform me
+                    status = STATUS_HF_ERR_STAT;
+                }
+            } else {
+                // Non -transmitted instructions, the execution is completed without errors and considered success!
+                status = STATUS_HF_TAG_OK;
+            }
+        }
+    } else {
+        status = STATUS_HF_TAG_NO;
+        // NRF_LOG_INFO("Tag lost(timeout).\n");
+    }
+
+    if ((flags & PCD_TRANSMIT_FLAG_NO_RESET_MF_CRYPTO1_ON) == 0 && status != STATUS_HF_TAG_OK) {
+        // If there are certain operations,
+        // We may need to remove MFCrypto1On This register logo,
+        // Because it may be because of the error encryption communication caused by verification
+        clear_register_mask(Status2Reg, 0x08);
+    }
+
+    // NRF_LOG_INFO("Com status: %d\n", status);
+    return status;
+}
+
+/**
+* @brief  : ISO14443-A Fast Select
+* @param  :tag: tag info buffer
+* @retval : if return STATUS_HF_TAG_OK, the tag is selected.
+*/
+uint8_t pcd_14a_reader_fast_select(picc_14a_tag_t *tag) { 
+    uint8_t dat_buff[9] = { 0x00 };
+    uint8_t status = STATUS_HF_TAG_OK;
+    uint8_t cascade_level = 0;
+    uint16_t dat_len;
+
+    // Wakeup
+    if (pcd_14a_reader_atqa_request(dat_buff, NULL, U8ARR_BIT_LEN(dat_buff)) != STATUS_HF_TAG_OK) {
+        return STATUS_HF_TAG_NO;
+    }
+
+    // OK we will select at least at cascade 1, lets see if first byte of UID was 0x88 in
+    // which case we need to make a cascade 2 request and select - this is a long UID
+    // While the UID is not complete, the 3nd bit (from the right) is set in the SAK.
+    for (; cascade_level < tag->cascade; cascade_level++) {
+        // Construct SELECT UID command (1 Byte cmd, 1 Byte NVB, 4 Byte UID, 1 Byte BCC, 2 Bytes CRC)
+        // SELECT_* (L1: 0x93, L2: 0x95, L3: 0x97)
+        dat_buff[0] = PICC_ANTICOLL1 + cascade_level * 2;
+        dat_buff[1] = 0x70;  // transmitting a full UID
+
+        // Copy the UID information of the tag to the dat_buff buffer
+        if (cascade_level < tag->cascade - 1) {
+            dat_buff[2] = 0x88;
+            memcpy(dat_buff + 3, tag->uid + cascade_level * 3, 3);
+        } else {
+            memcpy(dat_buff + 2, tag->uid + cascade_level * 3, 4);
+        }
+
+        dat_buff[6] = dat_buff[2] ^ dat_buff[3] ^ dat_buff[4] ^ dat_buff[5];  // calculate BCC
+        crc_14a_append(dat_buff, 7);                                      // calculate and add CRC
+        status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, sizeof(dat_buff), dat_buff, &dat_len, U8ARR_BIT_LEN(dat_buff));
+        // Receive the SAK
+        if (status != STATUS_HF_TAG_OK || !dat_len) {
+            // printf("SAK Err: %d, %d\r\n", status, dat_len);
+            return STATUS_HF_TAG_NO;
+        }
+    }
+    return STATUS_HF_TAG_OK;
 }
 
 /**
 * @brief  : ISO14443-A Find a card, only execute once!
-* @param  :tag: Buffer that stores card information
+* @param  : tag: Buffer that stores card information
 * @retval : Status value hf_tag_ok, success
 */
 uint8_t pcd_14a_reader_scan_once(picc_14a_tag_t *tag) {
@@ -491,14 +672,15 @@ uint8_t pcd_14a_reader_scan_once(picc_14a_tag_t *tag) {
     if (tag) {
         tag->uid_len = 0;
         memset(tag->uid, 0, 10);
+        tag->ats_len = 0;
     } else {
         return STATUS_PAR_ERR;  // Finding cards are not allowed to be transmitted to the label information structure
     }
 
     // wake
-    if (pcd_14a_reader_atqa_request(tag->atqa, NULL, U8ARR_BIT_LEN(tag->atqa)) != HF_TAG_OK) {
-        // NRF_LOG_INFO("pcd_14a_reader_atqa_request HF_TAG_NO\r\n");
-        return HF_TAG_NO;
+    if (pcd_14a_reader_atqa_request(tag->atqa, NULL, U8ARR_BIT_LEN(tag->atqa)) != STATUS_HF_TAG_OK) {
+        // NRF_LOG_INFO("pcd_14a_reader_atqa_request STATUS_HF_TAG_NO\r\n");
+        return STATUS_HF_TAG_NO;
     }
 
     uint8_t resp[DEF_FIFO_LENGTH] = {0}; // theoretically. A usual RATS will be much smaller
@@ -523,7 +705,7 @@ uint8_t pcd_14a_reader_scan_once(picc_14a_tag_t *tag) {
         status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, sel_all, sizeof(sel_all), resp, &len, U8ARR_BIT_LEN(resp));
 
         // There is a label collision, we need to solve the collision
-        if (status != HF_TAG_OK) {
+        if (status != STATUS_HF_TAG_OK) {
             // The collision still has to be collided. Do n't have this during the decryption process.
             // So do not solve the collision for the time being, but directly inform the user that the user guarantees that there is only one card in the field
             NRF_LOG_INFO("Err at tag collision.\n");
@@ -545,16 +727,16 @@ uint8_t pcd_14a_reader_scan_once(picc_14a_tag_t *tag) {
         uint8_t bcc = sel_uid[2] ^ sel_uid[3] ^ sel_uid[4] ^ sel_uid[5]; // calculate BCC
         if (sel_uid[6] != bcc) {
             NRF_LOG_INFO("BCC%d incorrect, got 0x%02x, expected 0x%02x\n", cascade_level, sel_uid[6], bcc);
-            return HF_ERR_BCC;
+            return STATUS_HF_ERR_BCC;
         }
 
         crc_14a_append(sel_uid, 7); // calculate and add CRC
 
         // send 9x 70 Choose a card
         status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, sel_uid, sizeof(sel_uid), resp, &len, U8ARR_BIT_LEN(resp));
-        if (status != HF_TAG_OK) {
+        if (status != STATUS_HF_TAG_OK) {
             NRF_LOG_INFO("Err at sak receive.\n");
-            return HF_ERR_STAT;
+            return STATUS_HF_ERR_STAT;
         }
 
         // Sak received by buffer
@@ -579,7 +761,34 @@ uint8_t pcd_14a_reader_scan_once(picc_14a_tag_t *tag) {
         // Therefore + 1
         tag->cascade = cascade_level + 1;
     }
-    return HF_TAG_OK;
+    if (tag->sak & 0x20) {
+        // Tag supports 14443-4, sending RATS
+        uint16_t ats_size;
+        status = pcd_14a_reader_ats_request(tag->ats, &ats_size, 0xFF * 8);
+        NRF_LOG_INFO("ats status %d, length %d", status, ats_size);
+        if (status != STATUS_HF_TAG_OK) {
+            NRF_LOG_INFO("Tag SAK claimed to support ATS but tag NAKd RATS");
+            tag->ats_len = 0;
+            // return STATUS_HF_ERR_ATS;
+        } else {
+            ats_size -= 2;  // size returned by pcd_14a_reader_ats_request includes CRC
+            if (ats_size > 254) {
+                NRF_LOG_INFO("Invalid ATS > 254!");
+                return STATUS_HF_ERR_ATS;
+            }
+            tag->ats_len = ats_size;
+            // We do not validate ATS here as we want to report ATS as it is without breaking 14a scan
+            if (tag->ats[0] != ats_size - 1) {
+                NRF_LOG_INFO("Invalid ATS! First byte doesn't match received length");
+                // return STATUS_HF_ERR_ATS;
+            }
+        }
+        /*
+        * FIXME: If there is an issue here, it will cause the label to lose its selected state.
+        *   It is necessary to reselect the card after the issue occurs here.
+        */
+    }
+    return STATUS_HF_TAG_OK;
 }
 
 /**
@@ -592,14 +801,14 @@ uint8_t pcd_14a_reader_scan_auto(picc_14a_tag_t *tag) {
 
     // The first card search
     status = pcd_14a_reader_scan_once(tag);
-    if (status == HF_TAG_OK) {
-        return HF_TAG_OK;
+    if (status == STATUS_HF_TAG_OK) {
+        return STATUS_HF_TAG_OK;
     }
 
     // Second card search
     status = pcd_14a_reader_scan_once(tag);
-    if (status == HF_TAG_OK) {
-        return HF_TAG_OK;
+    if (status == STATUS_HF_TAG_OK) {
+        return STATUS_HF_TAG_OK;
     }
 
     // More than the number of upper limits
@@ -618,15 +827,19 @@ uint8_t pcd_14a_reader_ats_request(uint8_t *pAts, uint16_t *szAts, uint16_t szAt
 
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, rats, sizeof(rats), pAts, szAts, szAtsBitMax);
 
-    if (status != HF_TAG_OK) {
-        NRF_LOG_INFO("Err at ats receive.\n");
+    if (status != STATUS_HF_TAG_OK) {
+        *szAts = 0;
+        NRF_LOG_ERROR("ATS rx error: %d", status);
         return status;
+    } else if (*szAts == 7 && pAts[0] == 0x4) { // tag replied with NAK
+        *szAts = 0;
+        return STATUS_HF_ERR_ATS;
     }
 
-    // NRF_LOG_INFO("Length: %d\n", *szAts);
+    NRF_LOG_INFO("Received ATS length: %d\n", *szAts);
 
     if (*szAts > 0) { *szAts = *szAts / 8; }
-    return HF_TAG_OK;
+    return STATUS_HF_TAG_OK;
 }
 
 /**
@@ -637,7 +850,7 @@ uint8_t pcd_14a_reader_ats_request(uint8_t *pAts, uint16_t *szAts, uint16_t szAt
 uint8_t pcd_14a_reader_atqa_request(uint8_t *resp, uint8_t *resp_par, uint16_t resp_max_bit) {
     uint16_t len = 0;
     uint8_t retry = 0;
-    uint8_t status = HF_TAG_OK;
+    uint8_t status = STATUS_HF_TAG_OK;
     uint8_t wupa[] = { PICC_REQALL };  // 0x26 - REQA  0x52 - WAKE-UP
 
     // we may need several tries if we did send an unknown command or a wrong authentication before...
@@ -649,13 +862,13 @@ uint8_t pcd_14a_reader_atqa_request(uint8_t *resp, uint8_t *resp_par, uint16_t r
 
     // normal ATQA It is 2 bytes, that is, 16bit,
     // We need to judge whether the data received is correct
-    if (status == HF_TAG_OK && len == 16) {
+    if (status == STATUS_HF_TAG_OK && len == 16) {
         // You can confirm that at least one 14A card exists in the current field
-        return HF_TAG_OK;
+        return STATUS_HF_TAG_OK;
     }
 
     // No card
-    return HF_TAG_NO;
+    return STATUS_HF_TAG_NO;
 }
 
 /**
@@ -678,21 +891,21 @@ uint8_t pcd_14a_reader_gen1a_unlock(void) {
     // Unlock the first step, send 7bit 0x40
     unlock = PICC_MAGICWUPC1;
     status = pcd_14a_reader_bits_transfer(&unlock, 7, NULL, recvbuf, NULL, &rx_length, U8ARR_BIT_LEN(recvbuf));
-    if (!(status == HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
+    if (!(status == STATUS_HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
         NRF_LOG_INFO("UNLOCK(MAGICWUPC1) FAILED! Length: %d, Status: %02x\n", rx_length, status);
-        return HF_ERR_STAT;
+        return STATUS_HF_ERR_STAT;
     }
 
     // Step in the second step, send a complete byte 0x43
     unlock = PICC_MAGICWUPC2;
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, &unlock, 1, recvbuf, &rx_length, U8ARR_BIT_LEN(recvbuf));
-    if (!(status == HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
+    if (!(status == STATUS_HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
         NRF_LOG_INFO("UNLOCK(MAGICWUPC2) FAILED! Length: %d, Status: %02x\n", rx_length, status);
-        return HF_ERR_STAT;
+        return STATUS_HF_ERR_STAT;
     }
 
     // There is no problem with unlocking twice. We default this unlock operation successfully!
-    return HF_TAG_OK;
+    return STATUS_HF_TAG_OK;
 }
 
 /**
@@ -720,19 +933,19 @@ uint8_t pcd_14a_reader_gen1a_uplock(void) {
     uint8_t recvbuf[1] = { 0x00 };
 
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, uplock_1, sizeof(uplock_1), recvbuf, &rx_length, U8ARR_BIT_LEN(recvbuf));
-    if (!(status == HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
+    if (!(status == STATUS_HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
         NRF_LOG_INFO("UPLOCK1(UFUID) FAILED!\n");
-        return HF_ERR_STAT;
+        return STATUS_HF_ERR_STAT;
     }
 
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, uplock_2, sizeof(uplock_2), recvbuf, &rx_length, U8ARR_BIT_LEN(recvbuf));
-    if (!(status == HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
+    if (!(status == STATUS_HF_TAG_OK && rx_length == 4 && recvbuf[0] == 0x0A)) {
         NRF_LOG_INFO("UPLOCK2(UFUID) FAILED!\n");
-        return HF_ERR_STAT;
+        return STATUS_HF_ERR_STAT;
     }
 
     // Successful card sealing
-    return HF_TAG_OK;
+    return STATUS_HF_TAG_OK;
 }
 
 /**
@@ -743,7 +956,7 @@ uint8_t pcd_14a_reader_gen1a_uplock(void) {
 *           ucaddr: block address
 *           pKEY: password
 *           PSNR: Card serial number, 4 bytes
-* @retval : The status value HF_TAG_OK is successful, tag_errauth fails, and other returns indicate some abnormalities related to communication errors!
+* @retval : The status value STATUS_HF_TAG_OK is successful, tag_errauth fails, and other returns indicate some abnormalities related to communication errors!
 */
 uint8_t pcd_14a_reader_mf1_auth(picc_14a_tag_t *tag, uint8_t type, uint8_t addr, uint8_t *pKey) {
     uint8_t dat_buff[12] = { type, addr };
@@ -757,11 +970,11 @@ uint8_t pcd_14a_reader_mf1_auth(picc_14a_tag_t *tag, uint8_t type, uint8_t addr,
     // In order to improve compatibility, we directly judge the implementation of the execution PCD_AUTHENT
     // After the instruction, whether the communication plus position in Status2reg is placed.
     if (read_register_single(Status2Reg) & 0x08) {
-        return HF_TAG_OK;
+        return STATUS_HF_TAG_OK;
     }
 
     // Other situations are considered failure!
-    return MF_ERR_AUTH;
+    return STATUS_MF_ERR_AUTH;
 }
 
 /**
@@ -788,14 +1001,14 @@ uint8_t pcd_14a_reader_mf1_read_by_cmd(uint8_t cmd, uint8_t addr, uint8_t *p) {
     crc_14a_append(dat_buff, 2);
     // Then initiate communication
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, 4, dat_buff, &len, U8ARR_BIT_LEN(dat_buff));
-    if (status == HF_TAG_OK) {
+    if (status == STATUS_HF_TAG_OK) {
         if (len == 0x90 /* 0x90 = 144bits */) {
             // 16 -byte length CRC data, in order not to waste the CPU performance,
             // We can let 522 Calculate
             crc_14a_calculate(dat_buff, 16, crc_buff);
             // Check the CRC to avoid data errors
             if ((crc_buff[0] != dat_buff[16]) || (crc_buff[1] != dat_buff[17])) {
-                status = HF_ERR_CRC;
+                status = STATUS_HF_ERR_CRC;
             }
             // Although CRC After checking the problem, but we can still pass back
             // Read the card data, because developers may have special usage
@@ -803,7 +1016,7 @@ uint8_t pcd_14a_reader_mf1_read_by_cmd(uint8_t cmd, uint8_t addr, uint8_t *p) {
         } else {
             // The data passed back is wrong, which may be an environmental factors or cards that do not comply with specifications!
             // Or the control bit affects reading!
-            status = HF_ERR_STAT;
+            status = STATUS_HF_ERR_STAT;
         }
     }
     return status;
@@ -841,16 +1054,16 @@ uint8_t pcd_14a_reader_mf1_write_by_cmd(uint8_t cmd, uint8_t addr, uint8_t *p) {
     // Request to write a card, at this time, the card should reply to ACK
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, 4, dat_buff, &dat_len, U8ARR_BIT_LEN(dat_buff));
     // The communication fails, the reason is returned directly
-    if (status != HF_TAG_OK) {
+    if (status != STATUS_HF_TAG_OK) {
         return status;
     }
     // The communication was successful, but the operation was rejected by the card!
     if ((dat_len != 4) || ((dat_buff[0] & 0x0F) != 0x0A)) {
         // NRF_LOG_INFO("1 status = %d, datalen = %d, data = %02x\n", status, dat_len, dat_buff[0]);
-        status = HF_ERR_STAT;
+        status = STATUS_HF_ERR_STAT;
     }
     // The communication was successful, the card accepted the card writing operation
-    if (status == HF_TAG_OK) {
+    if (status == STATUS_HF_TAG_OK) {
         // 1. Copy data and calculate CRC
         memcpy(dat_buff, p, 16);
         crc_14a_calculate(dat_buff, 16, &dat_buff[16]);
@@ -861,14 +1074,14 @@ uint8_t pcd_14a_reader_mf1_write_by_cmd(uint8_t cmd, uint8_t addr, uint8_t *p) {
         // 2. Transfer the final card writing data to complete the writing card
         status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, 18, dat_buff, &dat_len, U8ARR_BIT_LEN(dat_buff));
         // The communication fails, the reason is returned directly
-        if (status != HF_TAG_OK) {
+        if (status != STATUS_HF_TAG_OK) {
             return status;
         }
         // The communication is successful, we need to determine whether the card is successfully processed after receiving the data
         // And reply ACK
         if ((dat_len != 4) || ((dat_buff[0] & 0x0F) != 0x0A)) {
             // NRF_LOG_INFO("2 status = %d, datalen = %d, data = %02x\n", status, dat_len, dat_buff[0]);
-            status = HF_ERR_STAT;
+            status = STATUS_HF_ERR_STAT;
         }
     }
     return status;
@@ -886,6 +1099,95 @@ uint8_t pcd_14a_reader_mf1_write(uint8_t addr, uint8_t *p) {
 }
 
 /**
+ * @brief  : Increment: increments the contents of a block and stores the result in the internal Transfer Buffer
+ *           Decrement: decrements the contents of a block and stores the result in the internal Transfer Buffer
+ *           Restore: reads the contents of a block into the internal Transfer Buffer
+ * @param  : Operator: Increment, Decrement, Restore
+ *           Addr: block address
+ *           Operand: The written data, I32
+ * @retval : Status value hf_tag_ok, success
+ */
+uint8_t pcd_14a_reader_mf1_manipulate_value_block(uint8_t operator, uint8_t addr, int32_t operand) {
+    // operator can only be PICC_DECREMENT, PICC_INCREMENT, PICC_RESTORE
+    if (operator != PICC_DECREMENT && operator != PICC_INCREMENT && operator != PICC_RESTORE) {
+        return STATUS_PAR_ERR;
+    }
+
+    uint8_t status;
+    uint16_t dat_len;
+
+    // Prepare the cmd data to manipulate the value block
+    uint8_t dat_buff[6] = { operator, addr };
+    crc_14a_append(dat_buff, 2);
+
+    // NRF_LOG_INFO("0 pcd_14a_reader_mf1_manipulate_value_block addr = %d\r\n", addr);
+
+    // Request to manipulate block, at this time, the card should reply to ACK
+    status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, 4, dat_buff, &dat_len, U8ARR_BIT_LEN(dat_buff));
+    // The communication fails, the reason is returned directly
+    if (status != STATUS_HF_TAG_OK) {
+        return status;
+    }
+    // The communication was successful, but the operation was rejected by the card!
+    if ((dat_len != 4) || ((dat_buff[0] & 0x0F) != 0x0A)) {
+        // NRF_LOG_INFO("1 status = %d, datalen = %d, data = %02x\n", status, dat_len, dat_buff[0]);
+        return STATUS_HF_ERR_STAT;
+    }
+
+    // The communication was successful, the card accepted the card value block operand
+    // 1. Copy data and calculate CRC
+    memcpy(dat_buff, &operand, 4);
+    crc_14a_append(dat_buff, 4);
+
+    // NRF_LOG_INFO_hex("Will send: ", (uint8_t *)dat_buff, 6);
+    // NRF_LOG_INFO("\n");
+
+    // 2. Transfer the operand to complete the value block manipulation
+    status = pcd_14a_reader_bytes_transfer_flags(
+        PCD_TRANSCEIVE, 
+        dat_buff, 
+        6, 
+        dat_buff, 
+        &dat_len, 
+        U8ARR_BIT_LEN(dat_buff), 
+        PCD_TRANSMIT_FLAG_NO_RESET_MF_CRYPTO1_ON);
+    
+    // Operand Part of Increment/Decrement/Restore does not acknowledge, so Timeout means success
+    if (status != STATUS_HF_TAG_NO || dat_len != 0) {
+        return status == STATUS_HF_TAG_OK ? STATUS_HF_ERR_STAT : status;
+    }
+
+    return STATUS_HF_TAG_OK;
+}
+
+/**
+* @brief  : Writes the contents of the internal Transfer Buffer to a block
+* @param  : cmd : Transfer instruction
+*           addr: block address
+* @retval : Status value hf_tag_ok, success
+*/
+uint8_t pcd_14a_reader_mf1_transfer_value_block(uint8_t addr) {
+    uint8_t status;
+    uint16_t dat_len;
+    uint8_t dat_buff[4] = { PICC_TRANSFER, addr };
+
+    // Short data directly MCU calculate
+    crc_14a_append(dat_buff, 2);
+    // Then initiate communication
+    status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, dat_buff, 4, dat_buff, &dat_len, U8ARR_BIT_LEN(dat_buff));
+    // The communication fails, the reason is returned directly
+    if (status != STATUS_HF_TAG_OK) {
+        return status;
+    }
+    // The communication was successful, but the operation was rejected by the card!
+    if ((dat_len != 4) || ((dat_buff[0] & 0x0F) != 0x0A)) {
+        // NRF_LOG_INFO("1 status = %d, datalen = %d, data = %02x\n", status, dat_len, dat_buff[0]);
+        return STATUS_HF_ERR_STAT;
+    }
+    return STATUS_HF_TAG_OK;
+}
+
+/**
 * @brief   : Let the card enter the dormant mode
 * @param  :none
 * @retval : Status value Tag_notag, success
@@ -896,7 +1198,7 @@ uint8_t pcd_14a_reader_halt_tag(void) {
     // Prepare the molding data directly, and calculate a ghost CRC
     uint8_t data[] = { PICC_HALT, 0x00, 0x57, 0xCD };
     status = pcd_14a_reader_bytes_transfer(PCD_TRANSCEIVE, data, 4, data, &unLen, U8ARR_BIT_LEN(data));
-    return status == HF_TAG_NO && unLen == 0;
+    return status == STATUS_HF_TAG_NO && unLen == 0;
 }
 
 /**
@@ -945,6 +1247,8 @@ void pcd_14a_reader_calc_crc(uint8_t *pbtData, size_t szLen, uint8_t *pbtCrc) {
 */
 inline void pcd_14a_reader_antenna_on(void) {
     set_register_mask(TxControlReg, 0x03);
+    g_is_reader_antenna_on = true;
+    TAG_FIELD_LED_ON();
 }
 
 /**
@@ -952,6 +1256,8 @@ inline void pcd_14a_reader_antenna_on(void) {
 */
 inline void pcd_14a_reader_antenna_off(void) {
     clear_register_mask(TxControlReg, 0x03);
+    g_is_reader_antenna_on = false;
+    TAG_FIELD_LED_OFF();
 }
 
 /**
@@ -1095,4 +1401,141 @@ inline void crc_14a_append(uint8_t *pbtData, size_t szLen) {
  */
 inline void pcd_14a_reader_crc_computer(uint8_t use522CalcCRC) {
     m_crc_computer = use522CalcCRC;
+}
+
+/**
+* @brief    : The hf 14a raw command implementation function can be used to send the 14A command with the specified configuration parameters.
+* @param    :waitResp           : Wait for tag response
+* @param    :appendCrc          : Do you want to add CRC before sending
+* @param    :autoSelect         : Automatically select card before sending data
+* @param    :keepField          : Do you want to keep the RF field on after sending
+* @param    :checkCrc           : Is CRC verified after receiving data? If CRC verification is enabled, CRC bytes will be automatically removed after verification is completed.
+* @param    :waitRespTimeout    : If waitResp is enabled, this parameter will be the timeout value to wait for the tag to respond
+* @param    :szDataSend         : The number of bytes or bits of data to be sent
+* @param    :pDataSend          : Pointer to the buffer of the data to be sent
+*
+* @retval   : Execution Status
+*
+*/
+uint8_t pcd_14a_reader_raw_cmd(bool openRFField,  bool waitResp, bool appendCrc, bool autoSelect, bool keepField, bool checkCrc, uint16_t waitRespTimeout,
+                               uint16_t szDataSendBits, uint8_t *pDataSend, uint8_t *pDataRecv, uint16_t *pszDataRecv, uint16_t szDataRecvBitMax) {
+    // Status code, default is OK.
+    uint8_t status = STATUS_HF_TAG_OK;
+    // Reset recv length.
+    *pszDataRecv = 0;
+
+    // If additional CRC is required, first add the CRC to the tail.
+    if (appendCrc) {
+        if (szDataSendBits == 0) {
+            NRF_LOG_INFO("Adding CRC but missing data");
+            return STATUS_PAR_ERR;
+        }
+        if (szDataSendBits % 8) {
+            NRF_LOG_INFO("Adding CRC incompatible with partial bytes");
+            return STATUS_PAR_ERR;
+        }
+        if (szDataSendBits > ((DEF_FIFO_LENGTH - DEF_CRC_LENGTH) * 8)) {
+            // Note: Adding CRC requires at least two bytes of free space. If the transmitted data is already greater than or equal to 64, an error needs to be returned
+            NRF_LOG_INFO("Adding CRC requires data length less than or equal to 62.");
+            return STATUS_PAR_ERR;
+        }
+        // Calculate and append CRC byte data to the buffer
+        crc_14a_append(pDataSend, szDataSendBits / 8);
+        // CRC is also sent as part of the data, so the total length needs to be added to the CRC length here
+        szDataSendBits += DEF_CRC_LENGTH * 8;
+    }
+
+    if (autoSelect || szDataSendBits) {
+        // override openRFField if we need to select or to send data
+        openRFField = true;
+    }
+    if (openRFField && ! g_is_reader_antenna_on) { // Open rf field?
+        pcd_14a_reader_reset();
+        pcd_14a_reader_antenna_on();
+        bsp_delay_ms(8);
+    }
+
+    if (autoSelect) {
+        picc_14a_tag_t ti;
+        status = pcd_14a_reader_scan_once(&ti);
+        // Determine whether the card search was successful
+        if (status != STATUS_HF_TAG_OK) {
+            pcd_14a_reader_antenna_off();
+            return status;
+        }
+    }
+
+    // Is there any data that needs to be sent
+    if (szDataSendBits) {
+        // If there is no need to receive data, the data receiving cache needs to be empty, otherwise a specified timeout value needs to be set
+        // Caching old timeout values
+        uint16_t oldWaitRespTimeout = g_com_timeout_ms;
+        if (waitResp) {
+            // Then set the new values in
+            g_com_timeout_ms = waitRespTimeout;
+        } else {
+            pDataRecv = NULL;
+        }
+        if (szDataSendBits % 8) {
+            status = pcd_14a_reader_bits_transfer(
+                         pDataSend,
+                         szDataSendBits,
+                         NULL,
+                         pDataRecv,
+                         NULL,
+                         pszDataRecv,
+                         szDataRecvBitMax
+                     );
+        } else {
+            status = pcd_14a_reader_bytes_transfer(
+                         PCD_TRANSCEIVE,
+                         pDataSend,
+                         szDataSendBits / 8,
+                         pDataRecv,
+                         pszDataRecv,
+                         szDataRecvBitMax
+                     );
+        }
+
+        // If we need to receive data, we need to perform further operations on the data based on the remaining configuration after receiving it
+        if (waitResp) {
+            // Number of bits to bytes
+            uint8_t finalRecvBytes = (*pszDataRecv / 8) + (*pszDataRecv % 8 > 0 ? 1 : 0);
+            // If CRC verification is required, we need to perform CRC calculation
+            if (checkCrc) {
+                if (finalRecvBytes >= 3) {  // Ensure at least three bytes (one byte of data+two bytes of CRC)
+                    // Calculate and store CRC
+                    uint8_t crc_buff[DEF_CRC_LENGTH] = { 0x00 };
+                    crc_14a_calculate(pDataRecv, finalRecvBytes - DEF_CRC_LENGTH, crc_buff);
+                    // Verify CRC
+                    if (pDataRecv[finalRecvBytes - 2] != crc_buff[0] ||  pDataRecv[finalRecvBytes - 1] != crc_buff[1]) {
+                        // We have found an error in CRC verification and need to inform the upper computer!
+                        *pszDataRecv = 0;
+                        status = STATUS_HF_ERR_CRC;
+                    } else {
+                        // If the CRC needs to be verified by the device and the device determines that the CRC is normal,
+                        // we will return the data without CRC
+                        *pszDataRecv = finalRecvBytes - DEF_CRC_LENGTH;
+                    }
+                } else {
+                    // The data is insufficient to support the length of the CRC, so it is returned as is
+                    *pszDataRecv = 0;
+                }
+            } else {
+                // Do not verify CRC, all data is returned as is
+                *pszDataRecv = finalRecvBytes;
+            }
+            // We need to recover the timeout value
+            g_com_timeout_ms = oldWaitRespTimeout;
+        } else {
+            *pszDataRecv = 0;
+        }
+    }
+
+    // Finally, keep the field open as needed
+    if (!keepField) {
+        pcd_14a_reader_antenna_off();
+    }
+
+    return status;
 }

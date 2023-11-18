@@ -1,11 +1,22 @@
 import argparse
+import colorama
 from functools import wraps
-from typing import Union
+# once Python3.10 is mainstream, we can replace Union[str, None] by str | None
+from typing import Union, Callable, Any
 from prompt_toolkit.completion import Completer, NestedCompleter, WordCompleter
 from prompt_toolkit.completion.base import Completion
 from prompt_toolkit.document import Document
 
-import chameleon_status
+from chameleon_enum import Status
+
+# Colorama shorthands
+CR = colorama.Fore.RED
+CG = colorama.Fore.GREEN
+CB = colorama.Fore.BLUE
+CC = colorama.Fore.CYAN
+CY = colorama.Fore.YELLOW
+CM = colorama.Fore.MAGENTA
+C0 = colorama.Style.RESET_ALL
 
 
 class ArgsParserError(Exception):
@@ -28,12 +39,13 @@ class ArgumentParserNoExit(argparse.ArgumentParser):
         we must raise exception to stop parse
     """
 
-    def __init__(self, **args):
-        super().__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.add_help = False
         self.description = "Please enter correct parameters"
+        self.help_requested = False
 
-    def exit(self, status: int = ..., message: str or None = ...):
+    def exit(self, status: int = 0, message: Union[str, None] = None):
         if message:
             raise ParserExitIntercept(message)
 
@@ -41,8 +53,57 @@ class ArgumentParserNoExit(argparse.ArgumentParser):
         args = {'prog': self.prog, 'message': message}
         raise ArgsParserError('%(prog)s: error: %(message)s\n' % args)
 
+    def print_help(self):
+        """
+        Colorize argparse help
+        """
+        print("-" * 80)
+        print(f"{CR}{self.prog}{C0}\n")
+        lines = self.format_help().splitlines()
+        usage = lines[:lines.index('')]
+        assert usage[0].startswith('usage:')
+        usage[0] = usage[0].replace('usage:', f'{CG}usage:{C0}\n ')
+        usage[0] = usage[0].replace(self.prog, f'{CR}{self.prog}{C0}')
+        usage = [usage[0]] + [x[4:] for x in usage[1:]] + ['']
+        lines = lines[lines.index('')+1:]
+        desc = lines[:lines.index('')]
+        print(f'{CC}'+'\n'.join(desc)+f'{C0}\n')
+        print('\n'.join(usage))
+        lines = lines[lines.index('')+1:]
+        if '' in lines:
+            options = lines[:lines.index('')]
+            lines = lines[lines.index('')+1:]
+        else:
+            options = lines
+            lines = []
+        if len(options) > 0 and options[0].strip() == 'positional arguments:':
+            positional_args = options
+            positional_args[0] = positional_args[0].replace('positional arguments:', f'{CG}positional arguments:{C0}')
+            if len(positional_args) > 1:
+                positional_args.append('')
+            print('\n'.join(positional_args))
+            if '' in lines:
+                options = lines[:lines.index('')]
+                lines = lines[lines.index('')+1:]
+            else:
+                options = lines
+                lines = []
+        if len(options) > 0:
+            # 2 variants depending on Python version(?)
+            assert options[0].strip() in ['options:', 'optional arguments:']
+            options[0] = options[0].replace('options:', f'{CG}options:{C0}')
+            options[0] = options[0].replace('optional arguments:', f'{CG}optional arguments:{C0}')
+            if len(options) > 1:
+                options.append('')
+            print('\n'.join(options))
+        if len(lines) > 0:
+            lines[0] = f'{CG}{lines[0]}{C0}'
+            print('\n'.join(lines))
+        print('')
+        self.help_requested = True
 
-def expect_response(accepted_responses: Union[int, list[int]]):
+
+def expect_response(accepted_responses: Union[int, list[int]]) -> Callable[..., Any]:
     """
     Decorator for wrapping a Chameleon CMD function to check its response
     for expected return codes and throwing an exception otherwise
@@ -54,16 +115,14 @@ def expect_response(accepted_responses: Union[int, list[int]]):
         @wraps(func)
         def error_throwing_func(*args, **kwargs):
             ret = func(*args, **kwargs)
-
             if ret.status not in accepted_responses:
-                if ret.status in chameleon_status.Device and ret.status in chameleon_status.message:
-                    raise UnexpectedResponseError(
-                        chameleon_status.message[ret.status])
-                else:
-                    raise UnexpectedResponseError(
-                        f"Unexpected response and unknown status {ret.status}")
+                try:
+                    status_string = str(Status(ret.status))
+                except ValueError:
+                    status_string = f"Unexpected response and unknown status {ret.status}"
+                raise UnexpectedResponseError(status_string)
 
-            return ret
+            return ret.parsed
 
         return error_throwing_func
 
@@ -76,16 +135,23 @@ class CLITree:
 
     :param name: Name of the command (e.g. "set")
     :param help_text: Hint displayed for the command
-    :param fullname: Full name of the command that includes previous commands (e.g. "hw mode set")
+    :param fullname: Full name of the command that includes previous commands (e.g. "hw settings animation")
     :param cls: A BaseCLIUnit instance handling the command
     """
 
-    def __init__(self, name=None, help_text=None, fullname=None, children=None, cls=None) -> None:
-        self.name: str = name
-        self.help_text: str = help_text
-        self.fullname: str = fullname if fullname else name
-        self.children: list[CLITree] = children if children else list()
+    def __init__(self, name: str = "", help_text: Union[str, None] = None, fullname: Union[str, None] = None,
+                 children: Union[list["CLITree"], None] = None, cls=None, root=False) -> None:
+        self.name = name
+        self.help_text = help_text
+        self.fullname = fullname if fullname else name
+        self.children = children if children else list()
         self.cls = cls
+        self.root = root
+        if self.help_text is None and not root:
+            assert self.cls is not None
+            parser = self.cls().args_parser()
+            assert parser is not None
+            self.help_text = parser.description
 
     def subgroup(self, name, help_text=None):
         """
@@ -95,20 +161,23 @@ class CLITree:
         :param help_text: Hint displayed for the group
         """
         child = CLITree(
-            name=name, fullname=f'{self.fullname} {name}', help_text=help_text)
+            name=name,
+            fullname=f'{self.fullname} {name}' if not self.root else f'{name}',
+            help_text=help_text)
         self.children.append(child)
         return child
 
-    def command(self, name, help_text=None):
+    def command(self, name):
         """
         Create a child command
 
         :param name: Name of the command
-        :param help_text: Hint displayed for the command
         """
         def decorator(cls):
-            self.children.append(
-                CLITree(name=name, fullname=f'{self.fullname} {name}', help_text=help_text, cls=cls))
+            self.children.append(CLITree(
+                name=name,
+                fullname=f'{self.fullname} {name}' if not self.root else f'{name}',
+                cls=cls))
             return cls
         return decorator
 
@@ -130,38 +199,12 @@ class CustomNestedCompleter(NestedCompleter):
         return f"CustomNestedCompleter({self.options!r}, ignore_case={self.ignore_case!r})"
 
     @classmethod
-    def from_nested_dict(cls, data):
-        options = {}
-        meta_dict = {}
-        for key, value in data.items():
-            if isinstance(value, Completer):
-                options[key] = value
-            elif isinstance(value, dict):
-                options[key] = cls.from_nested_dict(value)
-            elif isinstance(value, set):
-                options[key] = cls.from_nested_dict(
-                    {item: None for item in value})
-            elif isinstance(value, CLITree):
-                if value.cls:
-                    # CLITree is a standalone command
-                    options[key] = ArgparseCompleter(value.cls().args_parser())
-                else:
-                    # CLITree is a command group
-                    options[key] = cls.from_clitree(value)
-                    meta_dict[key] = value.help_text
-            else:
-                assert value is None
-                options[key] = None
-
-        return cls(options, meta_dict=meta_dict)
-
-    @classmethod
     def from_clitree(cls, node):
         options = {}
         meta_dict = {}
 
         for child_node in node.children:
-            if child_node.cls and child_node.cls().args_parser():
+            if child_node.cls:
                 # CLITree is a standalone command with arguments
                 options[child_node.name] = ArgparseCompleter(
                     child_node.cls().args_parser())

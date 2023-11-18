@@ -40,13 +40,11 @@ Using ProxSpace to build the CLI is the easiest and most comfortable way to get 
 
 12. And the binaries with `cmake --build .`
 
-13. Copy the binaries by running `cp -r ~/ChameleonUltra/software/bin/* ~/ChameleonUltra/software/script/`
+13. Go into the script folder with `cd ~/ChameleonUltra/software/script/`
 
-14. Go into the script folder with `cd ~/ChameleonUltra/software/script/`
+14. Install python requirements with `pip install -r requirements.txt`
 
-15. Install python requirements with `pip install -r requirements.txt`
-
-16. Finally run the CLI with `python chameleon_cli_main.py`
+15. Finally run the CLI with `python chameleon_cli_main.py`
 
 To use after installing, just do the following:
 
@@ -106,7 +104,44 @@ To run again after installing, just do the following:
 
 ### Linux
 
-*Coming Soon*
+Install the dependencies
+  - Ubuntu / Debian:  
+  `sudo apt install git cmake build-essential python3-venv`
+  - Arch:  
+  `sudo pacman -S  git cmake base-devel python3`
+
+Run the following script to clone the Repository, compile the tools and install Python dependencies in a virtual environment.
+
+```sh
+#!/bin/bash
+
+git clone https://github.com/RfidResearchGroup/ChameleonUltra.git
+(
+  cd ChameleonUltra/software/src
+  mkdir -p out
+  (
+    cd out
+    cmake ..
+    cmake --build . --config Release
+  )
+)
+(
+  cd ChameleonUltra/software/script
+  python3 -m venv venv
+  source venv/bin/activate
+  pip3 install -r requirements.txt
+  deactivate
+)
+```
+
+To run the client after installing, do the following:
+
+```sh
+cd ChameleonUltra/software/script
+source venv/bin/activate
+python3 chameleon_cli_main.py
+deactivate
+```
 
 ### MacOS
 
@@ -116,18 +151,53 @@ To run again after installing, just do the following:
 
 When in the CLI, plug in your Chameleon and connect with `hw connect`. If autodetection fails, get the Serial Port used by your Chameleon and run `hw connect -p COM11` (Replace `COM11` with your serial port, on Linux it may be `/dev/ttyACM0`)
 
-### Common activities
+### MFKEY32v2 walk-through
+Make sure to be in the `software/` directory and run the Python CLI from there.
 
-- Change slot: hw slot change -s [1-8]
+```sh
+# Connect to the CLI
+hw connect
+# Check which slot can be used
+hw slot list
+# Change the slot type, here using slot 8 for a MFC 1k emulation
+hw slot type -s 8 -t MIFARE_1024
+# Init the slot content
+hw slot init -s 8 -t MIFARE_1024
+# or load an existing dump and set UID and anticollision data,
+# cf 'hf mf eload' and 'hf mf econfig'
+# Enable the slot
+hw slot enable -s 8 --hf
+# Change to the new slot
+hw slot change -s 8
+# Activate the authentication logs
+hf mf econfig --enable-log
+```
+Now disconnect, go to a reader and swipe it a few times
+
+Come back
+
+```sh
+# connect to the CLI
+hw connect
+# See if nonces were collected. We need 2 nonces per key to recover
+hf mf elog
+# Recover the key(s) based on the collected nonces
+hf mf elog --decrypt
+# Clean the logged detection nonces
+hf mf econfig --disable-log
+```
+  Output example:
+```
+ - MF1 detection log count = 6, start download.
+ - Download done (144bytes), start parse and decrypt
+ - Detection log for uid [DEADBEEF]
+  > Block 0 detect log decrypting...
+  > Block 1 detect log decrypting...
+  > Result ---------------------------
+  > Block 0, A key result: ['a0a1a2a3a4a5', 'aabbccddeeff']
+  > Block 1, A key result: ['010203040506']
+
+```
+
 
 *More examples coming soon*
-
-### Available Commands
-
-In `()` is the argument description, `[]` are possible entries for that argument (eg `[1-8]`)
-
-| Command          | Arguments                                                                 | Description                               |
-|:----------------:|:-------------------------------------------------------------------------:|:-----------------------------------------:|
-| `hw factory_reset` | `--i-know-what-im-doing` (Make sure you really want to wipe your Chameleon) | Returns the Chameleon to factory settings |
-|                  |                                                                           |                                           |
-|                  |                                                                           |                                           |

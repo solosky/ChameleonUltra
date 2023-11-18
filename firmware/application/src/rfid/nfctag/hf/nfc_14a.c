@@ -125,7 +125,7 @@ inline void nfc_tag_14a_append_bcc(uint8_t *pbtData, size_t szLen) {
  *
  */
 inline void nfc_tag_14a_append_crc(uint8_t *pbtData, size_t szLen) {
-    calc_14a_crc_lut(pbtData, szLen, pbtData + szLen);
+    calc_14a_crc_lut(pbtData, szLen, &pbtData[szLen]);
 }
 
 /**
@@ -134,10 +134,10 @@ inline void nfc_tag_14a_append_crc(uint8_t *pbtData, size_t szLen) {
  */
 bool nfc_tag_14a_checks_crc(uint8_t *pbtData, size_t szLen) {
     //if (szLen < 3) return false;
-    uint8_t c1 = pbtData[szLen - 2];
-    uint8_t c2 = pbtData[szLen - 1];
-    nfc_tag_14a_append_crc(pbtData, szLen - 2);
-    return pbtData[szLen - 2] == c1 && pbtData[szLen - 1] == c2;
+    uint8_t crc_calc[2];
+    calc_14a_crc_lut(pbtData, szLen - 2, crc_calc);
+    // NRF_LOG_INFO("%02x%02x ,  %02x%02x", pbtData[szLen - 2], pbtData[szLen - 1], crc_calc[0], crc_calc[1]);
+    return pbtData[szLen - 2] == crc_calc[0] && pbtData[szLen - 1] == crc_calc[1];
 }
 
 /**
@@ -295,17 +295,7 @@ uint8_t nfc_tag_14a_unwrap_frame(const uint8_t *pbtFrame, const size_t szFrameBi
  * @param[in]   appendCrc  Whether to send the byte flow, automatically send the CRC16 verification automatically
  */
 void nfc_tag_14a_tx_bytes(uint8_t *data, uint32_t bytes, bool appendCrc) {
-    NFC_14A_TX_BYTE_CORE(data, bytes, appendCrc, NRF_NFCT_FRAME_DELAY_MODE_WINDOW);
-}
-
-/**@brief The function of sending the byte flow, this implementation automatically sends SOF
- *
- * @param[in]   data        The byte flow data to be sent
- * @param[in]   bytes       The length of the byte flow to be sent
- * @param[in]   appendCrc   Whether to send the byte flow, automatically send the CRC16 verification automatically
- */
-void nfc_tag_14a_tx_bytes_delay_freerun(uint8_t *data, uint32_t bytes, bool appendCrc) {
-    NFC_14A_TX_BYTE_CORE(data, bytes, appendCrc, NRF_NFCT_FRAME_DELAY_MODE_FREERUN);
+    NFC_14A_TX_BYTE_CORE(data, bytes, appendCrc, NRF_NFCT_FRAME_DELAY_MODE_WINDOWGRID);
 }
 
 /**
@@ -316,6 +306,7 @@ void nfc_tag_14a_tx_bytes_delay_freerun(uint8_t *data, uint32_t bytes, bool appe
  */
 #define NFC_14A_TX_BITS_CORE(bits, mode)                                                        \
     do {                                                                                        \
+        nrf_nfct_frame_delay_max_set(65535);                                                    \
         NRF_NFCT->PACKETPTR = (uint32_t)(m_nfc_tx_buffer);                                      \
         NRF_NFCT->TXD.AMOUNT = bits;                                                            \
         NRF_NFCT->INTENSET = (NRF_NFCT_INT_TXFRAMESTART_MASK | NRF_NFCT_INT_TXFRAMEEND_MASK);   \
@@ -332,7 +323,7 @@ void nfc_tag_14a_tx_bytes_delay_freerun(uint8_t *data, uint32_t bytes, bool appe
 void nfc_tag_14a_tx_bits(uint8_t *data, uint32_t bits) {
     m_is_responded = true;
     memcpy(m_nfc_tx_buffer, data, (bits / 8) + (bits % 8 > 0 ? 1 : 0));
-    NFC_14A_TX_BITS_CORE(bits, NRF_NFCT_FRAME_DELAY_MODE_FREERUN);
+    NFC_14A_TX_BITS_CORE(bits, NRF_NFCT_FRAME_DELAY_MODE_WINDOWGRID);
 }
 
 /**@brief The function of sending n bits is implemented, and this implementation is automatically sent SOF
@@ -343,18 +334,7 @@ void nfc_tag_14a_tx_bits(uint8_t *data, uint32_t bits) {
 void nfc_tag_14a_tx_nbit(uint8_t data, uint32_t bits) {
     m_is_responded = true;
     m_nfc_tx_buffer[0] = data;
-    NFC_14A_TX_BITS_CORE(bits, NRF_NFCT_FRAME_DELAY_MODE_FREERUN);
-}
-
-/**@brief The function of sending n bits is implemented, and this implementation is automatically sent SOF
- *
- * @param[in]   data   BIT data to be sent
- * @param[in]   bits   To send a few bites
- */
-void nfc_tag_14a_tx_nbit_delay_window(uint8_t data, uint32_t bits) {
-    m_is_responded = true;
-    m_nfc_tx_buffer[0] = data;
-    NFC_14A_TX_BITS_CORE(bits, NRF_NFCT_FRAME_DELAY_MODE_WINDOW);
+    NFC_14A_TX_BITS_CORE(bits, NRF_NFCT_FRAME_DELAY_MODE_WINDOWGRID);
 }
 
 /**
@@ -563,7 +543,7 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
                         // Back to ATS data according to FSD, FSD is the largest frame size supported by PCD. After removing CRC, it is the actual data frame size support
                         nfc_tag_14a_tx_bytes(auto_coll_res->ats->data, len, true);
                     } else {
-                        nfc_tag_14a_tx_nbit_delay_window(NAK_INVALID_OPERATION_TBIV, 4);
+                        nfc_tag_14a_tx_nbit(NAK_INVALID_OPERATION_TBIV, 4);
                     }
                     // After handling the explicitly sending RATS instructions outside the outside, wait directly for the next round of communication
                     return;
@@ -576,6 +556,13 @@ void nfc_tag_14a_data_process(uint8_t *p_data) {
             }
         }
     }
+}
+
+static inline void nfc_fdt_reset(void) {
+    // STOP TX
+    *(volatile uint32_t *)0x40005010 = 0x01;
+    // Reset fdt max
+    nrf_nfct_frame_delay_max_set(0x00001000UL);
 }
 
 extern bool g_usb_led_marquee_enable;
@@ -592,7 +579,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             g_is_tag_emulating = true;
             g_usb_led_marquee_enable = false;
 
-            set_slot_light_color(1);
+            set_slot_light_color(RGB_GREEN);
             TAG_FIELD_LED_ON()
 
             NRF_LOG_INFO("HF FIELD DETECTED");
@@ -634,7 +621,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             break;
         }
         case NRFX_NFCT_EVT_RX_FRAMEEND: {
-            set_slot_light_color(1);
+            set_slot_light_color(RGB_GREEN);
             TAG_FIELD_LED_ON()
 
             // NRF_LOG_INFO("RX FRAMEEND.\n");
@@ -648,6 +635,7 @@ void nfc_tag_14a_event_callback(nrfx_nfct_evt_t const *p_event) {
             nfc_tag_14a_data_process(m_nfc_rx_buffer);
             // The above prompt tells us that when we do not need to reply to the card reader, we need to manually enable it
             if (!m_is_responded) {
+                nfc_fdt_reset();
                 NRFX_NFCT_RX_BYTES
             }
             break;

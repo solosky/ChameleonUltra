@@ -7,6 +7,7 @@
 #include "parity.h"
 #include "crapto1.h"
 #include "mfkey.h"
+#include "common.h"
 
 typedef struct {
     uint32_t nt;
@@ -17,25 +18,6 @@ typedef struct {
     uint64_t ks_list;
 } DarksideParam;
 
-// Convert string to U32 type
-uint64_t atoui(const char *str) {
-
-    uint64_t result = 0;
-    for (int i = 0; str[i] != '\0'; ++i) {
-        if (str[i] >= '0' && str[i] <= '9') {
-            result = result * 10 + str[i] - '0';
-        }
-    }
-    return result;
-}
-
-void num_to_bytes(uint64_t n, uint32_t len, uint8_t *dest) {
-    while (len--) {
-        dest[len] = (uint8_t)n;
-        n >>= 8;
-    }
-}
-
 int main(int argc, char *argv[]) {
 
     if (((argc - 2) % 5) != 0) {
@@ -44,7 +26,7 @@ int main(int argc, char *argv[]) {
     }
     // Initialize UID
     uint32_t uid = (uint32_t)atoui(argv[1]);
-    uint32_t count = 0, i = 0;
+    uint32_t count = 0, i, j;
     uint32_t keycount = 0;
     uint64_t *keylist = NULL, * last_keylist = NULL;
     DarksideParam *dps = NULL;
@@ -102,13 +84,13 @@ int main(int argc, char *argv[]) {
         uint8_t key_tmp[6] = { 0 };
         if (keycount > 0) {
             no_key_recover = false;
-            for (i = 0; i < keycount; i++) {
+            for (j = 0; j < keycount; j++) {
                 if (par_list == 0) {
-                    num_to_bytes(last_keylist[i], 6, key_tmp);
+                    num_to_bytes(last_keylist[j], 6, key_tmp);
                 } else {
-                    num_to_bytes(keylist[i], 6, key_tmp);
+                    num_to_bytes(keylist[j], 6, key_tmp);
                 }
-                printf("Key%d: %02X%02X%02X%02X%02X%02X\r\n", i + 1, key_tmp[0], key_tmp[1], key_tmp[2], key_tmp[3], key_tmp[4], key_tmp[5]);
+                printf("Key%d: %02X%02X%02X%02X%02X%02X\r\n", j + 1, key_tmp[0], key_tmp[1], key_tmp[2], key_tmp[3], key_tmp[4], key_tmp[5]);
             }
         }
     }

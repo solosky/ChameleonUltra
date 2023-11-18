@@ -1,5 +1,5 @@
 #include "fds_util.h"
-
+#include "bsp_wdt.h"
 
 #define NRF_LOG_MODULE_NAME fds_sync
 #include "nrf_log.h"
@@ -15,6 +15,7 @@ static struct {
     uint16_t key;       // file key
     bool success;       // task is success
     bool waiting;       // task waiting done.
+    bool ignore_pm;     // ignore peer manager records, defaults to true, set to false by fds_wipe
 } fds_operation_info;
 
 
@@ -49,26 +50,30 @@ bool fds_is_exists(uint16_t id, uint16_t key) {
 
 /**
  *Read record
+ * Length: set it to max length (size of buffer)
+ * After execution, length is updated to the real flash record size
  */
-bool fds_read_sync(uint16_t id, uint16_t key, uint16_t max_length, uint8_t *buffer) {
+bool fds_read_sync(uint16_t id, uint16_t key, uint16_t *length, uint8_t *buffer) {
     ret_code_t          err_code;       //The results of the operation
     fds_flash_record_t  flash_record;   // Pointing to the actual information in Flash
     fds_record_desc_t   record_desc;    // Recorded handle
     if (fds_find_record(id, key, &record_desc)) {
         err_code = fds_record_open(&record_desc, &flash_record);            //Open the record so that it is marked as the open state
         APP_ERROR_CHECK(err_code);
-        if (flash_record.p_header->length_words * 4 <= max_length) {        // Read the data in Flash here to the given RAM
+        if (flash_record.p_header->length_words * 4 <= *length) {        // Read the data in Flash here to the given RAM
             // Make sure that the buffer will not overflow, read this record
             memcpy(buffer, flash_record.p_data, flash_record.p_header->length_words * 4);
             NRF_LOG_INFO("FDS read success.");
+            *length = flash_record.p_header->length_words * 4;
             return true;
         } else {
-            NRF_LOG_INFO("FDS buffer too small, can't run memcpy, fds size = %d, buffer size = %d", flash_record.p_header->length_words * 4, max_length);
+            NRF_LOG_INFO("FDS buffer too small, can't run memcpy, fds size = %d, buffer size = %d", flash_record.p_header->length_words * 4, *length);
         }
         err_code = fds_record_close(&record_desc);                          // Close the file after the operation is completed
         APP_ERROR_CHECK(err_code);
     }
     //If the correct data is not loaded, this record may not exist
+    *length = 0;
     return false;
 }
 
@@ -103,7 +108,7 @@ static ret_code_t fds_write_record_nogc(uint16_t id, uint16_t key, uint16_t data
 /**
  * Write record
  */
-bool fds_write_sync(uint16_t id, uint16_t key, uint16_t data_length_words, void *buffer) {
+bool fds_write_sync(uint16_t id, uint16_t key, uint16_t length, void *buffer) {
     // Make only one task running
     APP_ERROR_CHECK_BOOL(!fds_operation_info.waiting);
     // write result
@@ -113,6 +118,11 @@ bool fds_write_sync(uint16_t id, uint16_t key, uint16_t data_length_words, void 
     fds_operation_info.key = key;
     fds_operation_info.success = false;
     fds_operation_info.waiting = true;
+    // compute needed words
+    if (length == 0) {
+        return ret;
+    }
+    uint16_t data_length_words = ((length - 1) / 4) + 1;
 
     // CCall the write implementation function without automatic GC
     ret_code_t err_code = fds_write_record_nogc(id, key, data_length_words, buffer);
@@ -183,11 +193,13 @@ static bool is_peer_manager_record(uint16_t id_or_key) {
  */
 static void fds_evt_handler(fds_evt_t const *p_evt) {
     // Skip peermanager event
-    if (is_peer_manager_record(p_evt->write.record_key) 
-            || is_peer_manager_record(p_evt->write.file_id)
-            || is_peer_manager_record(p_evt->del.record_key)
-            || is_peer_manager_record(p_evt->del.file_id)
-        ) {
+    if (fds_operation_info.ignore_pm && (
+                is_peer_manager_record(p_evt->write.record_key)
+                || is_peer_manager_record(p_evt->write.file_id)
+                || is_peer_manager_record(p_evt->del.record_key)
+                || is_peer_manager_record(p_evt->del.file_id)
+            )
+       ) {
         return;
     }
 
@@ -255,6 +267,7 @@ static void fds_evt_handler(fds_evt_t const *p_evt) {
  *Initialize the FDS library of NRF52
  */
 void fds_util_init() {
+    fds_operation_info.ignore_pm = true;
     // reset waiting flag
     fds_operation_info.waiting = false;
     //Register the incident first
@@ -302,7 +315,10 @@ static bool fds_next_record_delete_sync() {
 
 bool fds_wipe(void) {
     NRF_LOG_INFO("Full fds wipe requested");
-    while (fds_next_record_delete_sync()) {}
+    fds_operation_info.ignore_pm = false;  // wipe should also delete peer manager files.
+    while (fds_next_record_delete_sync()) {
+        bsp_wdt_feed();
+    }
     fds_gc_sync();
     return true;
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <cmsis_gcc.h>
+#include "netdata.h"
 
 /*
 * rC522CommandWord
@@ -17,6 +18,11 @@
 #define PCD_TRANSCEIVE        0x0C               //Send and receive numbers according to
 #define PCD_RESET             0x0F               //Restoration
 #define PCD_CALCCRC           0x03               //CRC calculation
+
+/**
+* flags for pcd_14a_reader_bytes_transfer_flags
+*/
+#define PCD_TRANSMIT_FLAG_NO_RESET_MF_CRYPTO1_ON 0x01 // do not clear MFCrypto1On when status != STATUS_HF_TAG_OK
 
 /*
 * isO14443ACommandWord
@@ -151,13 +157,16 @@
 #define U8ARR_BIT_LEN(src) ((sizeof(src)) * (8))
 
 // basicStructurePackagingOfLabelInformation
+// this struct is also used in the fw/cli protocol, therefore PACKED
 typedef struct {
     uint8_t uid[10];  // theByteArrayOfTheCardNumber,TheLongest10Byte
     uint8_t uid_len;  // theLengthOfTheCardNumber
     uint8_t cascade;  // theAntiCollisionLevelValueIs1Representation 4Byte,2Represents7Byte,3Means10Byte
     uint8_t sak;      // chooseToConfirm
     uint8_t atqa[2];  // requestResponse
-} picc_14a_tag_t;
+    uint8_t ats[0xFF];// 14443-4 answer to select
+    uint8_t ats_len;  // 14443-4 answer to select size
+} PACKED picc_14a_tag_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -186,6 +195,13 @@ uint8_t pcd_14a_reader_bytes_transfer(uint8_t Command,
                                       uint8_t *pOut,
                                       uint16_t *pOutLenBit,
                                       uint16_t maxOutLenBit);
+uint8_t pcd_14a_reader_bytes_transfer_flags(uint8_t Command,
+                                            uint8_t *pIn,
+                                            uint8_t  InLenByte,
+                                            uint8_t *pOut,
+                                            uint16_t *pOutLenBit,
+                                            uint16_t maxOutLenBit,
+                                            uint32_t flags);
 uint8_t pcd_14a_reader_bits_transfer(uint8_t *pTx,
                                      uint16_t  szTxBits,
                                      uint8_t *pTxPar,
@@ -200,6 +216,7 @@ void pcd_14a_reader_parity_off(void);
 
 // 14443-A tag operation
 uint8_t pcd_14a_reader_scan_auto(picc_14a_tag_t *tag);
+uint8_t pcd_14a_reader_fast_select(picc_14a_tag_t *tag);
 uint8_t pcd_14a_reader_ats_request(uint8_t *pAts, uint16_t *szAts, uint16_t szAtsBitMax);
 uint8_t pcd_14a_reader_atqa_request(uint8_t *resp, uint8_t *resp_par, uint16_t resp_max_bit);
 
@@ -212,9 +229,15 @@ uint8_t pcd_14a_reader_mf1_write(uint8_t addr, uint8_t *pData);
 // cardReadingOperation
 uint8_t pcd_14a_reader_mf1_read_by_cmd(uint8_t cmd, uint8_t addr, uint8_t *p);
 uint8_t pcd_14a_reader_mf1_read(uint8_t addr, uint8_t *pData);
+// value block operation
+uint8_t pcd_14a_reader_mf1_manipulate_value_block(uint8_t operator, uint8_t addr, int32_t operand);
+uint8_t pcd_14a_reader_mf1_transfer_value_block(uint8_t addr);
 // Formation card operation
 uint8_t pcd_14a_reader_halt_tag(void);
 void pcd_14a_reader_fast_halt_tag(void);
+
+uint8_t pcd_14a_reader_raw_cmd(bool openRFField, bool waitResp, bool appendCrc, bool autoSelect, bool keepField, bool checkCrc, uint16_t waitRespTimeout,
+                               uint16_t szDataSendBits, uint8_t *pDataSend, uint8_t *pDataRecv, uint16_t *pszDataRecv, uint16_t szDataRecvBitMax);
 
 // UID & UFUID tag operation
 uint8_t pcd_14a_reader_gen1a_unlock(void);

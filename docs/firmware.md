@@ -65,7 +65,7 @@ The Chameleon can be awaken:
 
 The white LED labeled RF lights up when it detects a field, again only if the active slot supports it.
 
-In some situations, it can be cumbersome to wait for the boot-up animation. This is configurable, cf e.g. the CLI command `hw settings animation set -h`.
+In some situations, it can be cumbersome to wait for the boot-up animation. This is configurable, cf e.g. the CLI command `hw settings animation -h`.
 
 On a new Chameleon (or after a factory reset), 3 slots are defined, slot 1 holding both a HF and a LF:
 
@@ -102,6 +102,11 @@ The Chameleon also shows the following LED effects:
 
 The device enters sleep mode after about 5s unless it is plugged in USB or if a client is connected over BLE. You can use the buttons to wake it up again. You can also press quickly a button during the sleep animation to keep the device awake.
 
+## Write Modes
+- **Normal**: Behaves like any normal card
+- **Denied**: Read-only card, send NACK to write attempts
+- **Deceive**: Accepts write commands but don't change any data (reader thinks write was successful but when reading back, nothing changed)
+- **Shadow**: Accepts writes but reverts changes when device goes to sleep (reader can read and write like a normal card but changes are kept in RAM and are lost when the chameleon goes to sleep) 
 
 ## The SoftDevice
 
@@ -111,5 +116,5 @@ We are using the [SoftDevice S140](https://infocenter.nordicsemi.com/index.jsp?t
 
 ## The User Data
 
-The Chameleon has a reserved space of memory and flash where it stores application settings, active slot and slots configurations and data. This will not be overwritten by DFU updates and the data will only be reset by either issuing `hw factory_reset --i-know-what-im-doing` in the CLI or clicking `Factory reset` in a GUI.
+The Chameleon has a reserved space of memory and flash where it stores application settings, active slot and slots configurations and data. This will not be overwritten by DFU updates and the data will only be reset by either issuing `hw factory_reset --force` in the CLI or clicking `Factory reset` in a GUI.
 *Warning:* Settings and/or data might be reset to defaults if you downgrade the firmware version up to a version not supporting the newer format.

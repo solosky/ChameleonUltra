@@ -105,9 +105,9 @@ static ble_opt_t m_static_pin_option;
  *
  * @details This function will set up the ble connect passkey.
  */
-void set_ble_connect_key(uint8_t* key) {
-    static uint8_t passkey[BLE_CONNECT_KEY_LEN_MAX];
-    memcpy(passkey, key, BLE_CONNECT_KEY_LEN_MAX);
+void set_ble_connect_key(uint8_t *key) {
+    static uint8_t passkey[BLE_PAIRING_KEY_LEN];
+    memcpy(passkey, key, BLE_PAIRING_KEY_LEN);
     m_static_pin_option.gap_opt.passkey.p_passkey = passkey;
     // NRF_LOG_RAW_HEXDUMP_INFO(passkey, 6);
     APP_ERROR_CHECK(sd_ble_opt_set(BLE_GAP_OPT_PASSKEY, &m_static_pin_option));
@@ -226,44 +226,25 @@ __INLINE uint32_t map(uint32_t x, uint32_t in_min, uint32_t in_max, uint32_t out
 
 //Battery voltage to percentage calculation
 uint32_t BATVOL2PERCENT(uint16_t VOL) {
-    //100%  4.20V   1
-    //90 %  4.06V       80%-100%    white
-    //80 %  3.98V   1
-    //70 %  3.92V       60%-80%     white
-    //60 %  3.87V   1
-    //50 %  3.82V       40%-60%     white
-    //40 %  3.79V   1
-    //30 %  3.77V       20%-40%     white
-    //20 %  3.74V   1
-    //10 %  3.68V       5%-20%      red
-    //5 %   3.45V   1               Turn off
-    //0 %   3.00V
-    //#define P100VOL   4200
-    //#define P80VOL    3980
-    //#define P60VOL    3870
-    //#define P40VOL    3790
-    //#define P20VOL    3740
-    //#define P5VOL 3450
+    // Based on https://github.com/RfidResearchGroup/ChameleonUltra/issues/167#issuecomment-1766908799
 
-    //100%  4.20V   1
-    //90 %  4.00V       80%-100%    white
-    //80 %  3.89V   1
-    //70 %  3.79V       60%-80%     white
-    //60 %  3.70V   1
-    //50 %  3.62V       40%-60%     white
-    //40 %  3.57V   1
-    //30 %  3.53V       20%-40%     white
-    //20 %  3.51V   1
-    //10 %  3.46V       5%-20%      red
-    //5 %   3.43V   1               Turn off
-    //0 %   3.00V
+#if defined(PROJECT_CHAMELEON_ULTRA)
+// Ultra
 #define P100VOL 4200
-#define P80VOL  3890
-#define P60VOL  3700
-#define P40VOL  3570
-#define P20VOL  3510
-#define P5VOL   3230
-
+#define P80VOL  4034
+#define P60VOL  3904
+#define P40VOL  3824
+#define P20VOL  3754
+#define P5VOL   3644
+#else
+// Lite
+#define P100VOL 4200
+#define P80VOL  3934
+#define P60VOL  3844
+#define P40VOL  3784
+#define P20VOL  3744
+#define P5VOL   3644
+#endif
 
     if (VOL > P80VOL) {
         //80-100
@@ -322,9 +303,15 @@ static void services_init(void) {
     bas_init_obj.p_report_ref         = NULL;
     bas_init_obj.initial_batt_level   = 100;
 
-    bas_init_obj.bl_rd_sec        = SEC_MITM;
-    bas_init_obj.bl_cccd_wr_sec   = SEC_MITM;
-    bas_init_obj.bl_report_rd_sec = SEC_MITM;
+    if (settings_get_ble_pairing_enable_first_load()) {
+        bas_init_obj.bl_rd_sec        = SEC_MITM;
+        bas_init_obj.bl_cccd_wr_sec   = SEC_MITM;
+        bas_init_obj.bl_report_rd_sec = SEC_MITM;
+    } else {
+        bas_init_obj.bl_rd_sec        = SEC_OPEN;
+        bas_init_obj.bl_cccd_wr_sec   = SEC_OPEN;
+        bas_init_obj.bl_report_rd_sec = SEC_OPEN;
+    }
 
     err_code = ble_bas_init(&m_bas, &bas_init_obj);
     APP_ERROR_CHECK(err_code);
@@ -439,10 +426,15 @@ static void ble_evt_handler(ble_evt_t const *p_ble_evt, void *p_context) {
 
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             // Pairing not supported? No, is supported now, hahahaha...
-            // err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
-            // APP_ERROR_CHECK(err_code);
+            // But... the pairing is enable?
+            if (settings_get_ble_pairing_enable_first_load()) {
+                NRF_LOG_DEBUG("Pairing is enable, The BLE_GAP_EVT_SEC_PARAMS_REQUEST event is handled by the pairing manager.");
+            } else {
+                err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
+                APP_ERROR_CHECK(err_code);
+            }
             break;
-        
+
         case BLE_GAP_EVT_PASSKEY_DISPLAY: {
             char passkey[BLE_GAP_PASSKEY_LEN + 1];
             memcpy(passkey, p_ble_evt->evt.gap_evt.params.passkey_display.passkey, BLE_GAP_PASSKEY_LEN);
@@ -556,8 +548,7 @@ static void advertising_init(void) {
 
 /**@brief Clear bond information from persistent storage.
  */
-void delete_bonds_all(void)
-{
+void delete_bonds_all(void) {
     ret_code_t err_code;
 
     NRF_LOG_INFO("Erase bonds!");
@@ -570,8 +561,7 @@ void delete_bonds_all(void)
  *
  * @param[in] skip  Filter passed to @ref pm_peer_id_list.
  */
-static void whitelist_set(pm_peer_id_list_skip_t skip)
-{
+static void whitelist_set(pm_peer_id_list_skip_t skip) {
     pm_peer_id_t peer_ids[BLE_GAP_WHITELIST_ADDR_MAX_COUNT];
     uint32_t     peer_id_count = BLE_GAP_WHITELIST_ADDR_MAX_COUNT;
 
@@ -586,17 +576,15 @@ static void whitelist_set(pm_peer_id_list_skip_t skip)
 
 /**@brief Function for starting advertising.
  */
-void advertising_start(bool erase_bonds)
-{
-    if (erase_bonds == true)
-    {
-        delete_bonds_all();
+void advertising_start(bool erase_bonds) {
+    if (erase_bonds == true && settings_get_ble_pairing_enable_first_load()) {
         // Advertising is started by PM_EVT_PEERS_DELETE_SUCCEEDED event.
-    }
-    else
-    {
-        whitelist_set(PM_PEER_ID_LIST_SKIP_NO_ID_ADDR);
-
+        // So we don't call `ble_advertising_start()` after `delete_bonds_all()`.
+        delete_bonds_all();
+    } else {
+        if (settings_get_ble_pairing_enable_first_load()) {
+            whitelist_set(PM_PEER_ID_LIST_SKIP_NO_ID_ADDR);
+        }
         ret_code_t ret = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
         APP_ERROR_CHECK(ret);
     }
@@ -605,8 +593,7 @@ void advertising_start(bool erase_bonds)
 /**
  * @brief Function for stop advertising.
  */
-void advertising_stop(void)
-{
+void advertising_stop(void) {
     sd_ble_gap_adv_stop(m_advertising.adv_handle);
 }
 
@@ -614,14 +601,12 @@ void advertising_stop(void)
  *
  * @param[in] p_evt  Peer Manager event.
  */
-static void pm_evt_handler(pm_evt_t const * p_evt)
-{
+static void pm_evt_handler(pm_evt_t const *p_evt) {
     pm_handler_on_pm_evt(p_evt);
     pm_handler_disconnect_on_sec_failure(p_evt);
     pm_handler_flash_clean(p_evt);
 
-    switch (p_evt->evt_id)
-    {
+    switch (p_evt->evt_id) {
         case PM_EVT_CONN_SEC_SUCCEEDED:
             // p_evt->peer_id;
             break;
@@ -631,22 +616,20 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
             break;
 
         case PM_EVT_PEER_DATA_UPDATE_SUCCEEDED:
-            if (     p_evt->params.peer_data_update_succeeded.flash_changed
-                 && (p_evt->params.peer_data_update_succeeded.data_id == PM_PEER_DATA_ID_BONDING))
-            {
+            if (p_evt->params.peer_data_update_succeeded.flash_changed
+                    && (p_evt->params.peer_data_update_succeeded.data_id == PM_PEER_DATA_ID_BONDING)) {
                 NRF_LOG_INFO("New Bond, add the peer to the whitelist if possible");
                 // Note: You should check on what kind of white list policy your application should use.
 
                 whitelist_set(PM_PEER_ID_LIST_SKIP_NO_ID_ADDR);
             }
             break;
-        case PM_EVT_CONN_SEC_CONFIG_REQ:
-            {
-                pm_conn_sec_config_t cfg;
-                cfg.allow_repairing = true;
-                pm_conn_sec_config_reply(p_evt->conn_handle, &cfg);
-            }
-            break;
+        case PM_EVT_CONN_SEC_CONFIG_REQ: {
+            pm_conn_sec_config_t cfg;
+            cfg.allow_repairing = true;
+            pm_conn_sec_config_reply(p_evt->conn_handle, &cfg);
+        }
+        break;
         default:
             break;
     }
@@ -654,8 +637,7 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 
 /**@brief Function for the Peer Manager initialization.
  */
-static void peer_manager_init(void)
-{
+static void peer_manager_init(void) {
     ble_gap_sec_params_t sec_param;
     ret_code_t           err_code;
 
@@ -708,11 +690,11 @@ void saadc_event_handler(nrf_drv_saadc_evt_t const *p_event) {
         // if battery service is notification enable, we can send msg to device.
         err_code = ble_bas_battery_level_update(&m_bas, percentage_batt_lvl, BLE_CONN_HANDLE_ALL);
         if ((err_code != NRF_SUCCESS) &&
-            (err_code != NRF_ERROR_INVALID_STATE) &&
-            (err_code != NRF_ERROR_RESOURCES) &&
-            (err_code != NRF_ERROR_BUSY) &&
-            (err_code != NRF_ERROR_FORBIDDEN) &&
-            (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)) {
+                (err_code != NRF_ERROR_INVALID_STATE) &&
+                (err_code != NRF_ERROR_RESOURCES) &&
+                (err_code != NRF_ERROR_BUSY) &&
+                (err_code != NRF_ERROR_FORBIDDEN) &&
+                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)) {
             APP_ERROR_HANDLER(err_code);
         }
 

@@ -14,16 +14,39 @@ Anywhere else: [Sneaktechnology](https://sneaktechnology.com) / [Aliexpress by R
 
 Read the [available documentation](docs/README.md).
 
+# Public Roadmap with reference to [Here](https://github.com/RfidResearchGroup/ChameleonUltra/wiki/Public-Roadmap)
+
+Table for future functionality progress
+---------------------------------
+
+|No.|Functionality to achieve| Date | In Progress / Achieved ? | Contributors | RRG will reward |
+|:--------------:|:--------------:|:--------:|:------------:|:------------:|:------------:|
+|1| Adding DESfire Support|28/09/2023|:--------------:|:--------------:|:------------:|
+|2| Adding Indala Emulation|28/09/2023|:--------------:|:--------------:|:------------:|
+|3| Adding HID Prox 26 bit Emulation|28/09/2023|:--------------:|:--------------:|:------------:|
+|4| Adding custom keys for t5577 read|28/09/2023|:------------:|:------------:|:------------:|
+|5|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|6|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|7|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|8|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|9|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|10|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|11|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|12|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|13|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+|14|:--------------:|:--------------:|:------------:|:------------:|:------------:|
+
 # Compatible applications
 
 * [ChameleonUltraGUI](https://github.com/GameTec-live/ChameleonUltraGUI)
 
 # Videos
 
-*Beware some of the instructions might have changed since recording, theck the current documentation in doubt!*
+*Beware some of the instructions might have changed since recording, check the current documentation when in doubt!*
 
 * [Downloading and compiling the official CLI](https://www.youtube.com/watch?v=VGpAeitNXH0)
 * [Downloading ChameleonUltraGUI](https://www.youtube.com/watch?v=rHH7iqbX3nY)
+* [ChameleonGUI features overview](https://www.youtube.com/watch?v=YqE8wyVSse4)
 
 # Official channels
 
