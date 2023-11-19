@@ -1154,7 +1154,7 @@ bool nfc_tag_mf1_data_factory(uint8_t slot, tag_specific_type_t tag_type) {
     // default mf1 config
     p_mf1_information->config.mode_gen1a_magic = false;
     p_mf1_information->config.mode_gen2_magic = false;
-    p_mf1_information->config.use_mf1_coll_res = false;
+    p_mf1_information->config.use_mf1_coll_res = true;
     p_mf1_information->config.mode_block_write = NFC_TAG_MF1_WRITE_NORMAL;
     p_mf1_information->config.detection_enable = false;
 
