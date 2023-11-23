@@ -4,7 +4,7 @@
 #include "nfc_14a.h"
 
 #define NFC_TAG_NTAG_DATA_SIZE   4
-#define NFC_TAG_NTAG_FRAME_SIZE 64
+#define NFC_TAG_NTAG_FRAME_SIZE 256
 #define NFC_TAG_NTAG_BLOCK_MAX   231
 
 #define NTAG213_PAGES 45 //45 pages total for ntag213, from 0 to 44
