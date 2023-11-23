@@ -121,10 +121,6 @@ void nfc_tag_ntag_state_handler(uint8_t *p_data, uint16_t szDataBits) {
     uint8_t command = p_data[0];
     uint8_t block_num = p_data[1];
 
-    NRF_LOG_INFO("%X", command);
-    // NRF_LOG_HEXDUMP_INFO(p_data, szDataBits/8);
-    NRF_LOG_FLUSH();
-
     switch (command) {
     case CMD_GET_VERSION:
         memcpy(m_tag_tx_buffer.tx_buffer, ntagVersion, 8);
