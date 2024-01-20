@@ -6,7 +6,10 @@
 #include "nrf_gpio.h"
 #include "app_error.h"
 
-#include "rfid_main.h"
+//#include "boards_defines.h"
+#include "rfid_port.h"
+
+//#include "rfid_main.h"
 #include "rc522.h"
 #include "bsp_delay.h"
 #include "bsp_time.h"
@@ -21,8 +24,8 @@
 NRF_LOG_MODULE_REGISTER();
 
 
-#define RC522_DOSEL nrf_gpio_pin_clear(HF_SPI_SELECT)
-#define RC522_UNSEL nrf_gpio_pin_set(HF_SPI_SELECT)
+#define RC522_DOSEL nrf_gpio_pin_clear(RC522_SPI_SELECT)
+#define RC522_UNSEL nrf_gpio_pin_set(RC522_SPI_SELECT)
 
 bool g_is_reader_antenna_on = false;
 
@@ -164,21 +167,24 @@ void pcd_14a_reader_init(void) {
         m_reader_is_init = true;
 
         // Initialize NSS foot GPIO
-        nrf_gpio_cfg_output(HF_SPI_SELECT);
+        nrf_gpio_cfg_output(RC522_SPI_SELECT);
 
         // Initialize SPI
         ret_code_t errCode;
 
         nrf_drv_spi_config_t spiConfig = NRF_DRV_SPI_DEFAULT_CONFIG;                // Use SPI default configuration
         // Configure the SPI port, pay attention not to set the CSN here, and use the GPIO port control
-        spiConfig.miso_pin = HF_SPI_MISO;
-        spiConfig.mosi_pin = HF_SPI_MOSI;
-        spiConfig.sck_pin = HF_SPI_SCK;
+        spiConfig.miso_pin = RC522_SPI_MISO;
+        spiConfig.mosi_pin = RC522_SPI_MOSI;
+        spiConfig.sck_pin =RC522_SPI_SCK;
         spiConfig.mode = NRF_DRV_SPI_MODE_0;
         spiConfig.frequency = NRF_DRV_SPI_FREQ_8M;
         // Configure to block operation
         errCode = nrf_drv_spi_init(&s_spiHandle, &spiConfig, NULL, NULL);
         APP_ERROR_CHECK(errCode);
+
+        uint8_t version = read_register_single(VersionReg);
+        NRF_LOG_INFO("rc522 version: %X", version);
 
         // Initialized timer
         // This timer is not released after the initialization of the timer, and it always needs to take up
