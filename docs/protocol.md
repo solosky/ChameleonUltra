@@ -294,6 +294,13 @@ Notes:
 * Command: 21 bytes: `src_type|src_block|src_key[6]|operator|operand[4]|dst_type|dst_block|dst_key[6]`. Key as 6 bytes. Type=`0x60` for key A, `0x61` for key B. Operator=`0xC0` for decrement, `0xC1` for increment, `0xC2` for restore. Operand as I32 in Network byte order.
 * Response: no data
 * CLI: cf `hf mf value`
+### 2012: MF1_CHECK_KEYS_OF_SECTORS
+* Command: 10+N*6 bytes: `mask[10]|keys[N][6]` (1<=N<=83)
+  * `mask`: 40 sectors, 2 bits/sector, MSB: `0A|0B|1A|1B|...|39A|39B`. `0b1` represent to skip checking the key.
+* Response: 490 bytes: `found[10]|sectorKey[40][2][6]`.
+  * `found`: 40 sectors, 2 bits/sector, MSB: `0A|0B|1A|1B|...|39A|39B`. `0b1` represent the key is found.
+  * `sectorKey`: 40 sectors, 2 keys/sector, 6 bytes/key: `key0A[6]|key0B[6]|key1A[6]|key1B[6]|...|key39A[6]|key39B[6]`
+* CLI: cf `hf mf fchk`
 ### 3000: EM410X_SCAN
 * Command: no data
 * Response: 5 bytes. `id[5]`. ID as 5 bytes.
@@ -381,6 +388,54 @@ Notes:
 * Command: no data
 * Response: no data or N bytes: `uidlen|uid[uidlen]|atqa[2]|sak|atslen|ats[atslen]`. UID, ATQA, SAK and ATS as bytes.
 * CLI: cf `hw slot list`/`hf mf econfig`/`hf mfu econfig`
+### 4019: MF0_NTAG_GET_UID_MAGIC_MODE
+* Command: no data
+* Response: 1 byte where a non-zero value indicates that UID magic mode is enabled for the current slot.
+* CLI: cf `hf mfu econfig`
+### 4020: MF0_NTAG_SET_UID_MAGIC_MODE
+* Command: 1 byte where a non-zero value indicates that UID magic mode should be enabled for the current slot, otherwise disabled.
+* Response: no data
+* CLI: cf `hf mfu econfig --enable-uid-magic`/`hf mfu econfig --disable-uid-magic`
+### 4021: MF0_NTAG_READ_EMU_PAGE_DATA
+* Command: 2 bytes: one for first page index, one for count of pages to be read.
+* Response: `4 * n` bytes where `n` is the number if pages to be read
+* CLI: cf `hf mfu eview`
+### 4022: MF0_NTAG_WRITE_EMU_PAGE_DATA
+* Command: 2 + `n * 4` bytes: one for first page index, one for count of pages to be read, `n * 4` for `n` pages data.
+* Response: no data
+* CLI: unused
+### 4023: MF0_NTAG_GET_VERSION_DATA
+* Command: no data
+* Response: 8 version data bytes.
+* CLI: cf `hf mfu econfig`
+### 4024: MF0_NTAG_SET_VERSION_DATA
+* Command: 8 version data bytes.
+* Response: no data
+* CLI: cf `hf mfu econfig --set-version <hex>`
+### 4025: MF0_NTAG_GET_SIGNATURE_DATA
+* Command: no data
+* Response: 32 signature data bytes.
+* CLI: cf `hf mfu econfig`
+### 4026: MF0_NTAG_SET_SIGNATURE_DATA
+* Command: 32 signature data bytes.
+* Response: no data
+* CLI: cf `hf mfu econfig --set-signature <hex>`
+### 4027: MF0_NTAG_GET_COUNTER_DATA
+* Command: 1 byte for the counter index
+* Response: 3 bytes for the counter value (big-endian) + 1 byte for tearing where `0xBD` means tearing flag is not set.
+* CLI: cf `hf mfu ercnt`
+### 4028: MF0_NTAG_SET_COUNTER_DATA
+* Command: 1 byte where the lower 7 bits are the counter index and the top bit indicates whether tearing event flag should be reset + 3 bytes of the counter value (big-endian).
+* Response: no data
+* CLI: cf `hf mfu ewcnt`
+### 4029: MF0_NTAG_RESET_AUTH_CNT
+* Command: no data
+* Response: 1 byte for the old value of the unsuccessful auth counter.
+* CLI: cf `hf mfu econfig --reset-auth-cnt`
+### 4030: MF0_NTAG_GET_PAGE_COUNT
+* Command: no data
+* Response: 1 byte is the number of pages available in the current card slot
+* CLI: unused
 ### 5000: EM410X_SET_EMU_ID
 * Command: 5 bytes. `id[5]`. ID as 5 bytes.
 * Response: no data

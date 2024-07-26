@@ -74,7 +74,7 @@ Building natively is a bit more advanced and not recommended for beginners
 
 4. Download and install [cmake](https://cmake.org/download/). Again, when asked, add to your path
 
-5. Download and install [python](https://www.python.org/downloads/). When asked, add to your path (small checkbox in the bottom left)
+5. Download and install [python](https://www.python.org/downloads/). When asked, add to your path (small checkbox in the bottom left). Python 3.9 or above is required.
 
 6. Choose a suitable location and open a terminal. Clone the repository with `git clone https://github.com/RfidResearchGroup/ChameleonUltra.git`
 
@@ -102,13 +102,25 @@ To run again after installing, just do the following:
 
 2. Run the CLI with `python chameleon_cli_main.py`
 
-### Linux
+### MacOS
+
+Requires [Homebrew](https://brew.sh/) to be installed.
+  - If you don't have Homebrew installed on your macOS, open the Terminal and run: 
+  `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+
+See Linux/Macos instructions below for the rest.
+
+### Linux / MacOS
 
 Install the dependencies
   - Ubuntu / Debian:  
   `sudo apt install git cmake build-essential python3-venv`
   - Arch:  
   `sudo pacman -S  git cmake base-devel python3`
+  - MacOS:
+  `brew install git cmake python3`
+
+Python 3.9 or above is required.
 
 Run the following script to clone the Repository, compile the tools and install Python dependencies in a virtual environment.
 
@@ -142,10 +154,6 @@ source venv/bin/activate
 python3 chameleon_cli_main.py
 deactivate
 ```
-
-### MacOS
-
-*Coming Soon*
 
 ## Usage
 

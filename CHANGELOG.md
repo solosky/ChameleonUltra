@@ -3,6 +3,10 @@ All notable changes to this project will be documented in this file.
 This project uses the changelog in accordance with [keepchangelog](http://keepachangelog.com/). Please use this to write notable changes, which is not the same as git commit log...
 
 ## [unreleased][unreleased]
+ - Added command to check keys of multiple sectors at once (@taichunmin)
+ - Fixed unused target key type parameter for nested (@petepriority)
+ - Skip already used items `hf mf elog --decrypt` (@p-l-)
+ - Parallelize mfkey32v2 processes called from CLI (@p-l-)
  - Added support for mifare classic value block operations (@taichunmin)
  - Added regression tests (@doegox)
  - Changed git version to version tag instead of dev tag (@taichunmin)
@@ -26,6 +30,7 @@ This project uses the changelog in accordance with [keepchangelog](http://keepac
  - Added support for timestamped comments in CLI via `rem`, `;`, `%` or `#` (@doegox)
  - Fixed watchdog trigger during `hw factory_reset` (@doegox)
  - Added PyInstaller support for CLI client (@augustozanellato)
+ - Added proper Mifare Ultralight (original, C, EV1) / NTAG (213, 215, 216) emulation (@turbocooler).
 
 ## [v2.0.0][2023-09-26]
  - Added `hw slot nick delete` and DELETE_SLOT_TAG_NICK (@doegox)

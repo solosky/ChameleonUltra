@@ -300,6 +300,45 @@ class ChameleonCMD:
         resp.parsed = resp.status == Status.HF_TAG_OK
         return resp
 
+    @expect_response([Status.HF_TAG_OK, Status.HF_TAG_NO])
+    def mf1_check_keys_of_sectors(self, mask: bytes, keys: list[bytes]):
+        """
+        Check keys of sectors.
+        :return:
+        """
+        if len(mask) != 10:
+            raise ValueError("len(mask) should be 10")
+        if len(keys) < 1 or len(keys) > 83:
+            raise ValueError("Invalid len(keys)")
+        data = struct.pack(f'!10s{6*len(keys)}s', mask, b''.join(keys))
+
+        bitsCnt = 80 # maximum sectorKey_to_be_checked
+        for b in mask:
+            while b > 0:
+                [bitsCnt, b] = [bitsCnt - (b & 0b1), b >> 1]
+        if bitsCnt < 1:
+            # All sectorKey is masked
+            return chameleon_com.Response(
+                cmd=Command.MF1_CHECK_KEYS_OF_SECTORS, 
+                status=Status.HF_TAG_OK,
+                parsed={ 'status': Status.HF_TAG_OK },
+            )
+        # base timeout: 1s
+        # auth: len(keys) * sectorKey_to_be_checked * 0.1s
+        # read keyB from trailer block: 0.1s
+        timeout = 1 + (bitsCnt + 1) * len(keys) * 0.1
+
+        resp = self.device.send_cmd_sync(Command.MF1_CHECK_KEYS_OF_SECTORS, data, timeout=timeout)
+        resp.parsed = { 'status': resp.status }
+        if len(resp.data) == 490:
+            found = ''.join([format(i, '08b') for i in resp.data[0:10]])
+            # print(f'{found = }')
+            resp.parsed.update({
+                'found': resp.data[0:10],
+                'sectorKeys': {k: resp.data[6 * k + 10:6 * k + 16] for k, v in enumerate(found) if v == '1'}
+            })
+        return resp
+
     @expect_response(Status.HF_TAG_OK)
     def mf1_static_nested_acquire(self, block_known, type_known, key_known, block_target, type_target):
         """
@@ -532,6 +571,69 @@ class ChameleonCMD:
         data = struct.pack('!BB', block_start, block_count)
         resp = self.device.send_cmd_sync(Command.MF1_READ_EMU_BLOCK_DATA, data)
         resp.parsed = resp.data
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_get_emu_pages_count(self):
+        """
+            Gets the number of pages available in the current MF0 / NTAG slot
+        """
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_GET_PAGE_COUNT)
+        resp.parsed = resp.data[0]
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_read_emu_page_data(self, page_start: int, page_count: int):
+        """
+            Gets data for selected block range
+        """
+        data = struct.pack('!BB', page_start, page_count)
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_READ_EMU_PAGE_DATA, data)
+        resp.parsed = resp.data
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_write_emu_page_data(self, page_start: int, data: bytes):
+        """
+            Gets data for selected block range
+        """
+        count = len(data) >> 2
+
+        assert (len(data) % 4) == 0
+        assert (page_start >= 0) and (count + page_start) <= 256
+
+        data = struct.pack('!BB', page_start, count) + data
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_WRITE_EMU_PAGE_DATA, data)
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_read_emu_counter_data(self, index: int) -> (int, bool):
+        """
+            Gets data for selected counter
+        """
+        data = struct.pack('!B', index)
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_GET_COUNTER_DATA, data)
+        if resp.status == Status.SUCCESS:
+            resp.parsed = (((resp.data[0] << 16) | (resp.data[1] << 8) | resp.data[2]), resp.data[3] == 0xBD)
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_write_emu_counter_data(self, index: int, value: int, reset_tearing: bool):
+        """
+            Sets data for selected counter
+        """
+        data = struct.pack('!BBBB', index | (int(reset_tearing) << 7), (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_SET_COUNTER_DATA, data)
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mfu_reset_auth_cnt(self):
+        """
+            Resets authentication counter
+        """
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_RESET_AUTH_CNT, bytes())
+        if resp.status == Status.SUCCESS:
+            resp.parsed = resp.data[0]
         return resp
 
     @expect_response(Status.SUCCESS)
@@ -879,6 +981,41 @@ class ChameleonCMD:
             offset += struct.calcsize(f'!{atslen}s')
             resp.parsed = {'uid': uid, 'atqa': atqa, 'sak': sak, 'ats': ats}
         return resp
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_get_uid_magic_mode(self):
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_GET_UID_MAGIC_MODE)
+        if resp.status == Status.SUCCESS:
+            resp.parsed, = struct.unpack('!?', resp.data)
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_set_uid_magic_mode(self, enabled: bool):
+        return self.device.send_cmd_sync(Command.MF0_NTAG_SET_UID_MAGIC_MODE, struct.pack('?', enabled))
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_get_version_data(self):
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_GET_VERSION_DATA)
+        if resp.status == Status.SUCCESS:
+            resp.parsed = resp.data[:8]
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_set_version_data(self, data: bytes):
+        assert len(data) == 8
+        return self.device.send_cmd_sync(Command.MF0_NTAG_SET_VERSION_DATA, data)
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_get_signature_data(self):
+        resp = self.device.send_cmd_sync(Command.MF0_NTAG_GET_SIGNATURE_DATA)
+        if resp.status == Status.SUCCESS:
+            resp.parsed = resp.data[:32]
+        return resp
+
+    @expect_response(Status.SUCCESS)
+    def mf0_ntag_set_signature_data(self, data: bytes):
+        assert len(data) == 32
+        return self.device.send_cmd_sync(Command.MF0_NTAG_SET_SIGNATURE_DATA, data)
 
     @expect_response(Status.SUCCESS)
     def get_ble_pairing_enable(self):
