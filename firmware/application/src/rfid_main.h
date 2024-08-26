@@ -9,16 +9,16 @@
 #include "nfc_14a.h"
 #include "nfc_mf1.h"
 #include "nfc_mf0_ntag.h"
-#include "lf_tag_em.h"
+//#include "lf_tag_em.h"
 #include "tag_emulation.h"
 
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
 #include "rc522.h"
 #include "mf1_toolbox.h"
-#include "lf_em410x_data.h"
-#include "lf_125khz_radio.h"
-#include "lf_reader_main.h"
+//#include "lf_em410x_data.h"
+//#include "lf_125khz_radio.h"
+//#include "lf_reader_main.h"
 #endif
 
 

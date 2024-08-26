@@ -2,7 +2,7 @@
 #include "bsp_time.h"
 #include "bsp_delay.h"
 //#include "usb_main.h"
-//#include "rfid_main.h"
+#include "rfid_main.h"
 //#include "ble_main.h"
 #include "syssleep.h"
 #include "tag_emulation.h"
@@ -16,6 +16,7 @@
 //#include "delayed_reset.h"
 #include "netdata.h"
 
+#include "tusb.h"
 
 #define NRF_LOG_MODULE_NAME app_cmd
 #include "nrf_log.h"
@@ -1356,13 +1357,15 @@ data_frame_tx_t *cmd_processor_get_device_capabilities(uint16_t cmd, uint16_t st
 static void auto_response_data(data_frame_tx_t *resp) {
     // TODO Please select the reply source automatically according to the message source,
     //  and do not reply by checking the validity of the link layer by layer
-    if (is_usb_working()) {
-        usb_cdc_write(resp->buffer, resp->length);
-    } else if (is_nus_working()) {
-        nus_data_response(resp->buffer, resp->length);
-    } else {
-        NRF_LOG_ERROR("No connection valid found at response client.");
-    }
+//     if (is_usb_working()) {
+//         usb_cdc_write(resp->buffer, resp->length);
+//     } else if (is_nus_working()) {
+//         nus_data_response(resp->buffer, resp->length);
+//     } else {
+//         NRF_LOG_ERROR("No connection valid found at response client.");
+//     }
+    tud_cdc_write(resp->buffer, resp->length);
+    tud_cdc_write_flush();
 }
 
 
