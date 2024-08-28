@@ -12,6 +12,8 @@ const static chameleon_device_type_t m_device_type =
 #error No device defined
 #endif
 
+#define FW_VER_NUM 1
+
 char g_extern_product_str[sizeof(DEVICE_NAME_STR) + sizeof(": hw_v255, fw_v65535") + 1];
 
 
@@ -106,6 +108,7 @@ void hw_connect_init(void) {
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
     if (m_hw_ver == 1) {
+        #ifndef PIXLJS_NEO
         LED_FIELD       = (NRF_GPIO_PIN_MAP(1, 1));
         LED_1           = (NRF_GPIO_PIN_MAP(0, 20));
         LED_2           = (NRF_GPIO_PIN_MAP(0, 17));
@@ -142,6 +145,7 @@ void hw_connect_init(void) {
         HF_ANT_SEL      = (NRF_GPIO_PIN_MAP(1, 10));
 
         READER_POWER    = (NRF_GPIO_PIN_MAP(1, 15));
+        #endif
     }
 #endif
 

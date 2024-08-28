@@ -9,7 +9,7 @@
 //#include "boards_defines.h"
 #include "rfid_port.h"
 
-//#include "rfid_main.h"
+#include "rfid_main.h"
 #include "rc522.h"
 #include "bsp_delay.h"
 #include "bsp_time.h"

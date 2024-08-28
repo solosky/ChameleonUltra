@@ -535,6 +535,7 @@ static data_frame_tx_t *cmd_processor_mf1_manipulate_value_block(uint16_t cmd, u
     return data_frame_make(cmd, status, 0, NULL);
 }
 
+#ifdef LF_READER_ENABLED
 static data_frame_tx_t *cmd_processor_em410x_scan(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     uint8_t id_buffer[5] = {0x00};
     status = PcdScanEM410X(id_buffer);
@@ -560,6 +561,8 @@ static data_frame_tx_t *cmd_processor_em410x_write_to_t55XX(uint16_t cmd, uint16
                            (length - offsetof(payload_t, new_keys)) / sizeof(payload->new_keys));
     return data_frame_make(cmd, status, 0, NULL);
 }
+
+#endif
 
 #endif
 
@@ -1217,8 +1220,9 @@ static data_frame_tx_t *cmd_processor_set_ble_connect_key(uint16_t cmd, uint16_t
 
 static data_frame_tx_t *cmd_processor_delete_all_ble_bonds(uint16_t cmd, uint16_t status, uint16_t length,
                                                            uint8_t *data) {
-    advertising_stop();
-    delete_bonds_all();
+    // FIXME
+    // advertising_stop();
+    // delete_bonds_all();
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
@@ -1347,8 +1351,10 @@ static cmd_data_map_t m_data_cmd_map[] = {
     {DATA_CMD_MF1_CHECK_KEYS_OF_SECTORS, before_hf_reader_run, cmd_processor_mf1_check_keys_of_sectors,
      after_hf_reader_run},
 
+#ifdef LF_READER_ENABLED
     {DATA_CMD_EM410X_SCAN, before_reader_run, cmd_processor_em410x_scan, NULL},
     {DATA_CMD_EM410X_WRITE_TO_T55XX, before_reader_run, cmd_processor_em410x_write_to_t55XX, NULL},
+#endif
 
 #endif
 
@@ -1414,8 +1420,11 @@ static void auto_response_data(data_frame_tx_t *resp) {
     // } else {
     //     NRF_LOG_ERROR("No connection valid found at response client.");
     // }
-    tud_cdc_write(resp->buffer, resp->length);
-    tud_cdc_write_flush();
+
+    void tud_cdc_write_begin(const void *buff, size_t data_size);
+    NRF_LOG_INFO("TX data: %d bytes", resp->length);
+    tud_cdc_write_begin(resp->buffer, resp->length);
+   
 }
 
 /**@brief Function to process data frame(cmd)

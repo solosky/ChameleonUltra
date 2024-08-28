@@ -8,6 +8,8 @@
 #include "nrf_saadc.h"
 #include "device_info.h"
 
+#include "boards_defines.h"
+
 typedef enum {
     CHAMELEON_ULTRA,
     CHAMELEON_LITE,
@@ -51,28 +53,28 @@ extern uint32_t g_bat_sense_pin;
 extern nrf_saadc_input_t g_bat_sense;
 
 
-#define LED_FIELD       g_led_field
-#define LED_1           g_led_1
-#define LED_2           g_led_2
-#define LED_3           g_led_3
-#define LED_4           g_led_4
-#define LED_5           g_led_5
-#define LED_6           g_led_6
-#define LED_7           g_led_7
-#define LED_8           g_led_8
-#define LED_R           g_led_r
-#define LED_G           g_led_g
-#define LED_B           g_led_b
-#define RGB_LIST_NUM    g_led_num
-#define RGB_CTRL_NUM    g_rgb_num
-#define BUTTON_1        g_button1
-#define BUTTON_2        g_button2
-#define BUTTON_PULL     NRF_GPIO_PIN_PULLDOWN
-#define LF_MOD          g_lf_mod
-#define LF_RSSI_PIN     g_lf_rssi_pin
-#define LF_RSSI         g_lf_rssi
-#define BAT_SENSE_PIN   g_bat_sense_pin
-#define BAT_SENSE       g_bat_sense
+#define LED_FIELD       LED_1
+// #define LED_1           -1
+// #define LED_2           -1
+// #define LED_3           -1
+#define LED_4           -1
+#define LED_5           -1
+#define LED_6           -1
+#define LED_7           -1
+#define LED_8           -1
+#define LED_R           -1
+#define LED_G           -1
+#define LED_B           -1
+#define RGB_LIST_NUM    0
+#define RGB_CTRL_NUM    0
+// #define BUTTON_1        -1
+// #define BUTTON_2        -1
+// #define BUTTON_PULL     NRF_GPIO_PIN_PULLDOWN
+#define LF_MOD          -1
+#define LF_RSSI_PIN     -1
+#define LF_RSSI         -1
+#define BAT_SENSE_PIN   -1
+#define BAT_SENSE       -1
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
 extern uint32_t g_lf_ant_driver;
@@ -90,8 +92,8 @@ extern uint32_t g_reader_power;
 #define HF_SPI_MISO    g_hf_spi_miso
 #define HF_SPI_MOSI    g_hf_spi_mosi
 #define HF_SPI_SCK     g_hf_spi_sck
-#define HF_ANT_SEL     g_hf_ant_sel
-#define READER_POWER   g_reader_power
+//#define HF_ANT_SEL     g_hf_ant_sel
+//#define READER_POWER   g_reader_power
 #endif
 
 
