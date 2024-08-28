@@ -1,21 +1,20 @@
-#include "fds_util.h"
-#include "bsp_time.h"
 #include "bsp_delay.h"
-//#include "usb_main.h"
-#include "rfid_main.h"
-//#include "ble_main.h"
-#include "syssleep.h"
-#include "tag_emulation.h"
-#include "hex_utils.h"
-#include "data_cmd.h"
+#include "bsp_time.h"
+#include "fds_util.h"
+// #include "usb_main.h"
 #include "app_cmd.h"
 #include "app_status.h"
-#include "tag_persistence.h"
-#include "nrf_pwr_mgmt.h"
-//#include "settings.h"
-//#include "delayed_reset.h"
+#include "ble_main.h"
+#include "data_cmd.h"
+#include "delayed_reset.h"
+#include "hex_utils.h"
 #include "netdata.h"
-
+#include "nrf_pwr_mgmt.h"
+#include "rfid_main.h"
+#include "settings.h"
+#include "syssleep.h"
+#include "tag_emulation.h"
+#include "tag_persistence.h"
 #include "tusb.h"
 
 #define NRF_LOG_MODULE_NAME app_cmd
@@ -24,7 +23,10 @@
 #include "nrf_log_default_backends.h"
 NRF_LOG_MODULE_REGISTER();
 
-
+// FIXME:
+#define APP_FW_VER_MAJOR 1
+#define APP_FW_VER_MINOR 2
+#define GIT_VERSION "111111"
 static void change_slot_auto(uint8_t slot) {
     device_mode_t mode = get_device_mode();
     tag_emulation_change_slot(slot, mode != DEVICE_MODE_READER);
@@ -42,19 +44,17 @@ static data_frame_tx_t *cmd_processor_get_app_version(uint16_t cmd, uint16_t sta
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)&payload);
 }
 
-
 static data_frame_tx_t *cmd_processor_get_git_version(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     return data_frame_make(cmd, STATUS_SUCCESS, strlen(GIT_VERSION), (uint8_t *)GIT_VERSION);
 }
-
 
 static data_frame_tx_t *cmd_processor_get_device_model(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     uint8_t resp_data = hw_get_device_type();
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(resp_data), &resp_data);
 }
 
-
-static data_frame_tx_t *cmd_processor_change_device_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_change_device_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     if ((length != 1) || (data[0] > 1)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -81,19 +81,21 @@ static data_frame_tx_t *cmd_processor_get_device_mode(uint16_t cmd, uint16_t sta
 
 static data_frame_tx_t *cmd_processor_enter_bootloader(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     // restart to boot
-#define BOOTLOADER_DFU_GPREGRET_MASK            (0xB0)
-#define BOOTLOADER_DFU_START_BIT_MASK           (0x01)
-#define BOOTLOADER_DFU_START    (BOOTLOADER_DFU_GPREGRET_MASK |         BOOTLOADER_DFU_START_BIT_MASK)
+#define BOOTLOADER_DFU_GPREGRET_MASK (0xB0)
+#define BOOTLOADER_DFU_START_BIT_MASK (0x01)
+#define BOOTLOADER_DFU_START (BOOTLOADER_DFU_GPREGRET_MASK | BOOTLOADER_DFU_START_BIT_MASK)
     APP_ERROR_CHECK(sd_power_gpregret_clr(0, 0xffffffff));
     APP_ERROR_CHECK(sd_power_gpregret_set(0, BOOTLOADER_DFU_START));
     nrf_pwr_mgmt_shutdown(NRF_PWR_MGMT_SHUTDOWN_GOTO_DFU);
     // Never into here...
-    while (1) __NOP();
+    while (1)
+        __NOP();
     // For the compiler to be happy...
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_get_device_chip_id(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_device_chip_id(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     struct {
         uint32_t chip_HSW;
         uint32_t chip_LSW;
@@ -103,11 +105,13 @@ static data_frame_tx_t *cmd_processor_get_device_chip_id(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)&payload);
 }
 
-static data_frame_tx_t *cmd_processor_get_device_address(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_device_address(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     // The FICR value is a just a random number, with no knowledge
     // of the Bluetooth Specification requirements for random addresses.
     // So we need to set a Bluetooth LE random address as a static address.
-    // See: https://github.com/zephyrproject-rtos/zephyr/blob/7b6b1328a0cb96fe313a5e2bfc57047471df236e/subsys/bluetooth/controller/hci/nordic/hci_vendor.c#L29
+    // See:
+    // https://github.com/zephyrproject-rtos/zephyr/blob/7b6b1328a0cb96fe313a5e2bfc57047471df236e/subsys/bluetooth/controller/hci/nordic/hci_vendor.c#L29
 
     struct {
         uint16_t device_address_HSW;
@@ -129,20 +133,22 @@ static data_frame_tx_t *cmd_processor_reset_settings(uint16_t cmd, uint16_t stat
     return data_frame_make(cmd, status, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_get_device_settings(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_device_settings(uint16_t cmd, uint16_t status, uint16_t length,
+                                                          uint8_t *data) {
     uint8_t settings[7 + BLE_PAIRING_KEY_LEN] = {};
-    settings[0] = SETTINGS_CURRENT_VERSION; // current version
-    settings[1] = settings_get_animation_config(); // animation mode
-    settings[2] = settings_get_button_press_config('A'); // short A button press mode
-    settings[3] = settings_get_button_press_config('B'); // short B button press mode
+    settings[0] = SETTINGS_CURRENT_VERSION;                   // current version
+    settings[1] = settings_get_animation_config();            // animation mode
+    settings[2] = settings_get_button_press_config('A');      // short A button press mode
+    settings[3] = settings_get_button_press_config('B');      // short B button press mode
     settings[4] = settings_get_long_button_press_config('A'); // long A button press mode
     settings[5] = settings_get_long_button_press_config('B'); // long B button press mode
-    settings[6] = settings_get_ble_pairing_enable(); // is device require pairing
+    settings[6] = settings_get_ble_pairing_enable();          // is device require pairing
     memcpy(settings + 7, settings_get_ble_connect_key(), BLE_PAIRING_KEY_LEN);
     return data_frame_make(cmd, STATUS_SUCCESS, 7 + BLE_PAIRING_KEY_LEN, settings);
 }
 
-static data_frame_tx_t *cmd_processor_set_animation_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_animation_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     if ((length != 1) || (data[0] > 2)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -150,7 +156,8 @@ static data_frame_tx_t *cmd_processor_set_animation_mode(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_get_animation_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_animation_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     uint8_t animation_mode = settings_get_animation_config();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &animation_mode);
 }
@@ -160,12 +167,13 @@ static data_frame_tx_t *cmd_processor_get_battery_info(uint16_t cmd, uint16_t st
         uint16_t voltage;
         uint8_t percent;
     } PACKED payload;
-    payload.voltage = U16HTONS(batt_lvl_in_milli_volts);
-    payload.percent = percentage_batt_lvl;
+    payload.voltage = 3300; // FIXME: U16HTONS(batt_lvl_in_milli_volts);
+    payload.percent = 100;  // FIXME: percentage_batt_lvl;
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)&payload);
 }
 
-static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     if ((length != 1) || (!is_settings_button_type_valid(data[0]))) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -173,7 +181,8 @@ static data_frame_tx_t *cmd_processor_get_button_press_config(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(button_press_config), &button_press_config);
 }
 
-static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -181,7 +190,8 @@ static data_frame_tx_t *cmd_processor_set_button_press_config(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                   uint8_t *data) {
     if ((length != 1) || (!is_settings_button_type_valid(data[0]))) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -189,7 +199,8 @@ static data_frame_tx_t *cmd_processor_get_long_button_press_config(uint16_t cmd,
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(button_press_config), &button_press_config);
 }
 
-static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                   uint8_t *data) {
     if ((length != 2) || (!is_settings_button_type_valid(data[0]))) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -197,12 +208,14 @@ static data_frame_tx_t *cmd_processor_set_long_button_press_config(uint16_t cmd,
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_get_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length,
+                                                             uint8_t *data) {
     uint8_t is_enable = settings_get_ble_pairing_enable();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &is_enable);
 }
 
-static data_frame_tx_t *cmd_processor_set_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_ble_pairing_enable(uint16_t cmd, uint16_t status, uint16_t length,
+                                                             uint8_t *data) {
     if (length != 1 && data[0] > 1) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -234,7 +247,8 @@ static data_frame_tx_t *cmd_processor_hf14a_scan(uint16_t cmd, uint16_t status, 
     return data_frame_make(cmd, STATUS_HF_TAG_OK, offset, payload);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_detect_support(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_detect_support(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     status = check_std_mifare_nt_support();
     return data_frame_make(cmd, status, 0, NULL);
 }
@@ -257,14 +271,16 @@ typedef struct {
     uint8_t block_target;
 } PACKED nested_common_payload_t;
 
-static data_frame_tx_t *cmd_processor_mf1_static_nested_acquire(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_static_nested_acquire(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     mf1_static_nested_core_t sncs;
     if (length != sizeof(nested_common_payload_t)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
     nested_common_payload_t *payload = (nested_common_payload_t *)data;
-    status = static_nested_recover_key(bytes_to_num(payload->key_known, 6), payload->block_known, payload->type_known, payload->block_target, payload->type_target, &sncs);
+    status = static_nested_recover_key(bytes_to_num(payload->key_known, 6), payload->block_known, payload->type_known,
+                                       payload->block_target, payload->type_target, &sncs);
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
     }
@@ -272,7 +288,8 @@ static data_frame_tx_t *cmd_processor_mf1_static_nested_acquire(uint16_t cmd, ui
     return data_frame_make(cmd, STATUS_HF_TAG_OK, sizeof(sncs), (uint8_t *)(&sncs));
 }
 
-static data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_t status, uint16_t length,
+                                                           uint8_t *data) {
     if (length != 4) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -281,7 +298,8 @@ static data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_
         // DarksideCore_t is PACKED and comprises only bytes so we can use it directly
         DarksideCore_t dc;
     } PACKED payload;
-    status = darkside_recover_key(data[1], data[0], data[2], data[3], &payload.dc, (mf1_darkside_status_t *)&payload.darkside_status);
+    status = darkside_recover_key(data[1], data[0], data[2], data[3], &payload.dc,
+                                  (mf1_darkside_status_t *)&payload.darkside_status);
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
     }
@@ -291,7 +309,8 @@ static data_frame_tx_t *cmd_processor_mf1_darkside_acquire(uint16_t cmd, uint16_
     return data_frame_make(cmd, STATUS_HF_TAG_OK, sizeof(payload), (uint8_t *)&payload);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_detect_nt_dist(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_detect_nt_dist(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     typedef struct {
         uint8_t type_known;
         uint8_t block_known;
@@ -308,7 +327,8 @@ static data_frame_tx_t *cmd_processor_mf1_detect_nt_dist(uint16_t cmd, uint16_t 
 
     payload_t *payload = (payload_t *)data;
     uint32_t distance;
-    status = nested_distance_detect(payload->block_known, payload->type_known, payload->key_known, payload_resp.uid, &distance);
+    status = nested_distance_detect(payload->block_known, payload->type_known, payload->key_known, payload_resp.uid,
+                                    &distance);
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
     }
@@ -316,14 +336,16 @@ static data_frame_tx_t *cmd_processor_mf1_detect_nt_dist(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, STATUS_HF_TAG_OK, sizeof(payload_resp), (uint8_t *)&payload_resp);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_nested_acquire(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_nested_acquire(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     mf1_nested_core_t ncs[SETS_NR];
     if (length != sizeof(nested_common_payload_t)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
     nested_common_payload_t *payload = (nested_common_payload_t *)data;
-    status = nested_recover_key(bytes_to_num(payload->key_known, 6), payload->block_known, payload->type_known, payload->block_target, payload->type_target, ncs);
+    status = nested_recover_key(bytes_to_num(payload->key_known, 6), payload->block_known, payload->type_known,
+                                payload->block_target, payload->type_target, ncs);
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
     }
@@ -331,7 +353,8 @@ static data_frame_tx_t *cmd_processor_mf1_nested_acquire(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, STATUS_HF_TAG_OK, sizeof(ncs), (uint8_t *)(&ncs));
 }
 
-static data_frame_tx_t *cmd_processor_mf1_auth_one_key_block(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_auth_one_key_block(uint16_t cmd, uint16_t status, uint16_t length,
+                                                             uint8_t *data) {
     typedef struct {
         uint8_t type;
         uint8_t block;
@@ -347,24 +370,24 @@ static data_frame_tx_t *cmd_processor_mf1_auth_one_key_block(uint16_t cmd, uint1
     return data_frame_make(cmd, status, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_check_keys_of_sectors(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_check_keys_of_sectors(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     if (length < 16 || (length - 10) % 6 != 0) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
     // init
-    mf1_toolbox_check_keys_of_sectors_in_t in = {
-        .mask = *(mf1_toolbox_check_keys_of_sectors_mask_t *) &data[0],
-        .keys_len = (length - 10) / 6,
-        .keys = (mf1_key_t *) &data[10]
-    };
+    mf1_toolbox_check_keys_of_sectors_in_t in = {.mask = *(mf1_toolbox_check_keys_of_sectors_mask_t *)&data[0],
+                                                 .keys_len = (length - 10) / 6,
+                                                 .keys = (mf1_key_t *)&data[10]};
     mf1_toolbox_check_keys_of_sectors_out_t out;
     status = mf1_toolbox_check_keys_of_sectors(&in, &out);
 
     return data_frame_make(cmd, status, sizeof(out), (uint8_t *)&out);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_read_one_block(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_read_one_block(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     typedef struct {
         uint8_t type;
         uint8_t block;
@@ -375,7 +398,7 @@ static data_frame_tx_t *cmd_processor_mf1_read_one_block(uint16_t cmd, uint16_t 
     }
 
     payload_t *payload = (payload_t *)data;
-    uint8_t block[16] = { 0x00 };
+    uint8_t block[16] = {0x00};
     status = auth_key_use_522_hw(payload->block, payload->type, payload->key);
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
@@ -387,7 +410,8 @@ static data_frame_tx_t *cmd_processor_mf1_read_one_block(uint16_t cmd, uint16_t 
     return data_frame_make(cmd, status, sizeof(block), block);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_write_one_block(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_write_one_block(uint16_t cmd, uint16_t status, uint16_t length,
+                                                          uint8_t *data) {
     typedef struct {
         uint8_t type;
         uint8_t block;
@@ -409,7 +433,7 @@ static data_frame_tx_t *cmd_processor_mf1_write_one_block(uint16_t cmd, uint16_t
 
 static data_frame_tx_t *cmd_processor_hf14a_raw(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     // Response Buffer
-    uint8_t resp[DEF_FIFO_LENGTH] = { 0x00 };
+    uint8_t resp[DEF_FIFO_LENGTH] = {0x00};
     uint16_t resp_length = 0;
 
     typedef struct {
@@ -428,7 +452,8 @@ static data_frame_tx_t *cmd_processor_hf14a_raw(uint16_t cmd, uint16_t status, u
         uint16_t resp_timeout;
         uint16_t data_bitlength;
 
-        uint8_t data_buffer[0]; // We can have a lot of data or no data. struct just to compute offsets with min options.
+        uint8_t
+            data_buffer[0]; // We can have a lot of data or no data. struct just to compute offsets with min options.
     } PACKED payload_t;
     payload_t *payload = (payload_t *)data;
     if (length < sizeof(payload_t)) {
@@ -443,28 +468,21 @@ static data_frame_tx_t *cmd_processor_hf14a_raw(uint16_t cmd, uint16_t status, u
     NRF_LOG_INFO("check_response_crc = %d", payload->options.check_response_crc);
     NRF_LOG_INFO("reserved           = %d", payload->options.reserved);
 
-    status = pcd_14a_reader_raw_cmd(
-                 payload->options.activate_rf_field,
-                 payload->options.wait_response,
-                 payload->options.append_crc,
-                 payload->options.auto_select,
-                 payload->options.keep_rf_field,
-                 payload->options.check_response_crc,
+    status = pcd_14a_reader_raw_cmd(payload->options.activate_rf_field, payload->options.wait_response,
+                                    payload->options.append_crc, payload->options.auto_select,
+                                    payload->options.keep_rf_field, payload->options.check_response_crc,
 
-                 U16NTOHS(payload->resp_timeout),
+                                    U16NTOHS(payload->resp_timeout),
 
-                 U16NTOHS(payload->data_bitlength),
-                 payload->data_buffer,
+                                    U16NTOHS(payload->data_bitlength), payload->data_buffer,
 
-                 resp,
-                 &resp_length,
-                 U8ARR_BIT_LEN(resp)
-             );
+                                    resp, &resp_length, U8ARR_BIT_LEN(resp));
 
     return data_frame_make(cmd, status, resp_length, resp);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_manipulate_value_block(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_manipulate_value_block(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                 uint8_t *data) {
     typedef struct {
         uint8_t src_type;
         uint8_t src_block;
@@ -494,7 +512,8 @@ static data_frame_tx_t *cmd_processor_mf1_manipulate_value_block(uint16_t cmd, u
     }
 
     // value block operation
-    status = pcd_14a_reader_mf1_manipulate_value_block(payload->operator, payload->src_block, (int32_t) U32NTOHL(payload->operand));
+    status = pcd_14a_reader_mf1_manipulate_value_block(payload->operator, payload->src_block,
+                                                       (int32_t)U32NTOHL(payload->operand));
     if (status != STATUS_HF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
     }
@@ -517,7 +536,7 @@ static data_frame_tx_t *cmd_processor_mf1_manipulate_value_block(uint16_t cmd, u
 }
 
 static data_frame_tx_t *cmd_processor_em410x_scan(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
-    uint8_t id_buffer[5] = { 0x00 };
+    uint8_t id_buffer[5] = {0x00};
     status = PcdScanEM410X(id_buffer);
     if (status != STATUS_LF_TAG_OK) {
         return data_frame_make(cmd, status, 0, NULL);
@@ -525,7 +544,8 @@ static data_frame_tx_t *cmd_processor_em410x_scan(uint16_t cmd, uint16_t status,
     return data_frame_make(cmd, STATUS_LF_TAG_OK, sizeof(id_buffer), id_buffer);
 }
 
-static data_frame_tx_t *cmd_processor_em410x_write_to_t55XX(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_em410x_write_to_t55XX(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     typedef struct {
         uint8_t id[5];
         uint8_t old_key[4];
@@ -536,12 +556,12 @@ static data_frame_tx_t *cmd_processor_em410x_write_to_t55XX(uint16_t cmd, uint16
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
-    status = PcdWriteT55XX(payload->id, payload->old_key, payload->new_keys, (length - offsetof(payload_t, new_keys)) / sizeof(payload->new_keys));
+    status = PcdWriteT55XX(payload->id, payload->old_key, payload->new_keys,
+                           (length - offsetof(payload_t, new_keys)) / sizeof(payload->new_keys));
     return data_frame_make(cmd, status, 0, NULL);
 }
 
 #endif
-
 
 static data_frame_tx_t *cmd_processor_set_active_slot(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
     if (length != 1 || data[0] >= TAG_MAX_SLOT_NUM) {
@@ -569,15 +589,15 @@ static data_frame_tx_t *cmd_processor_set_slot_tag_type(uint16_t cmd, uint16_t s
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_delete_slot_sense_type(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_delete_slot_sense_type(uint16_t cmd, uint16_t status, uint16_t length,
+                                                             uint8_t *data) {
     typedef struct {
         uint8_t num_slot;
         uint8_t sense_type;
     } PACKED payload_t;
     payload_t *payload = (payload_t *)data;
-    if ((length != sizeof(payload_t)) ||
-            (payload->num_slot >= TAG_MAX_SLOT_NUM) ||
-            (payload->sense_type != TAG_SENSE_HF && payload->sense_type != TAG_SENSE_LF)) {
+    if ((length != sizeof(payload_t)) || (payload->num_slot >= TAG_MAX_SLOT_NUM) ||
+        (payload->sense_type != TAG_SENSE_HF && payload->sense_type != TAG_SENSE_LF)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
@@ -585,7 +605,8 @@ static data_frame_tx_t *cmd_processor_delete_slot_sense_type(uint16_t cmd, uint1
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_set_slot_data_default(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_slot_data_default(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     typedef struct {
         uint8_t num_slot;
         uint16_t tag_type;
@@ -611,17 +632,15 @@ static data_frame_tx_t *cmd_processor_set_slot_enable(uint16_t cmd, uint16_t sta
     } PACKED payload_t;
 
     payload_t *payload = (payload_t *)data;
-    if (length != sizeof(payload_t) ||
-            payload->slot_index >= TAG_MAX_SLOT_NUM ||
-            (payload->sense_type != TAG_SENSE_HF && payload->sense_type != TAG_SENSE_LF) ||
-            payload->enabled > 1) {
+    if (length != sizeof(payload_t) || payload->slot_index >= TAG_MAX_SLOT_NUM ||
+        (payload->sense_type != TAG_SENSE_HF && payload->sense_type != TAG_SENSE_LF) || payload->enabled > 1) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
 
     uint8_t slot_now = payload->slot_index;
     tag_emulation_slot_set_enable(slot_now, payload->sense_type, payload->enabled);
     if ((!payload->enabled) &&
-            (!tag_emulation_slot_is_enabled(slot_now, payload->sense_type == TAG_SENSE_HF ? TAG_SENSE_LF : TAG_SENSE_HF))) {
+        (!tag_emulation_slot_is_enabled(slot_now, payload->sense_type == TAG_SENSE_HF ? TAG_SENSE_LF : TAG_SENSE_HF))) {
         // HF and LF disabled, need to change slot
         uint8_t slot_prev = tag_emulation_slot_find_next(slot_now);
         NRF_LOG_INFO("slot_now = %d, slot_prev = %d", slot_now, slot_prev);
@@ -634,7 +653,8 @@ static data_frame_tx_t *cmd_processor_set_slot_enable(uint16_t cmd, uint16_t sta
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_slot_data_config_save(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_slot_data_config_save(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     tag_emulation_save();
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
@@ -722,7 +742,8 @@ static nfc_tag_14a_coll_res_reference_t *get_coll_res_data(bool write) {
     return info;
 }
 
-static data_frame_tx_t *cmd_processor_hf14a_get_anti_coll_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_hf14a_get_anti_coll_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                               uint8_t *data) {
     nfc_tag_14a_coll_res_reference_t *info = get_coll_res_data(false);
 
     if (info == NULL) return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
@@ -747,7 +768,8 @@ static data_frame_tx_t *cmd_processor_hf14a_get_anti_coll_data(uint16_t cmd, uin
     return data_frame_make(cmd, STATUS_SUCCESS, offset, payload);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_set_detection_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_set_detection_enable(uint16_t cmd, uint16_t status, uint16_t length,
+                                                               uint8_t *data) {
     if (length != 1 || data[0] > 1) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -756,12 +778,14 @@ static data_frame_tx_t *cmd_processor_mf1_set_detection_enable(uint16_t cmd, uin
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_detection_enable(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_detection_enable(uint16_t cmd, uint16_t status, uint16_t length,
+                                                               uint8_t *data) {
     uint8_t is_enable = nfc_tag_mf1_is_detection_enable();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, (uint8_t *)(&is_enable));
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_detection_count(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_detection_count(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     uint32_t count = nfc_tag_mf1_detection_log_count();
     if (count == 0xFFFFFFFF) {
         count = 0;
@@ -770,7 +794,8 @@ static data_frame_tx_t *cmd_processor_mf1_get_detection_count(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(uint32_t), (uint8_t *)&payload);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_detection_log(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_detection_log(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     uint32_t count;
     uint32_t index;
     uint8_t *resp = NULL;
@@ -784,11 +809,13 @@ static data_frame_tx_t *cmd_processor_mf1_get_detection_log(uint16_t cmd, uint16
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
     resp = (uint8_t *)(logs + index);
-    length = MIN(count - index, NETDATA_MAX_DATA_LENGTH / sizeof(nfc_tag_mf1_auth_log_t)) * sizeof(nfc_tag_mf1_auth_log_t);
+    length =
+        MIN(count - index, NETDATA_MAX_DATA_LENGTH / sizeof(nfc_tag_mf1_auth_log_t)) * sizeof(nfc_tag_mf1_auth_log_t);
     return data_frame_make(cmd, STATUS_SUCCESS, length, resp);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_write_emu_block_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_write_emu_block_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                               uint8_t *data) {
     if (length == 0 || (((length - 1) % NFC_TAG_MF1_DATA_SIZE) != 0)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -806,7 +833,8 @@ static data_frame_tx_t *cmd_processor_mf1_write_emu_block_data(uint16_t cmd, uin
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_read_emu_block_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_read_emu_block_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     if ((length != 2) || (data[1] < 1) || (data[1] > 32) || (data[0] + data[1] > NFC_TAG_MF1_BLOCK_MAX)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -822,7 +850,8 @@ static data_frame_tx_t *cmd_processor_mf1_read_emu_block_data(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, result_length, result_buffer);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_write_emu_page_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_write_emu_page_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                   uint8_t *data) {
     uint8_t byte;
     uint8_t active_slot = tag_emulation_get_slot();
 
@@ -842,12 +871,10 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_write_emu_page_data(uint16_t cmd,
     int pages_count = data[1];
     int byte_length = (int)pages_count * NFC_TAG_MF0_NTAG_DATA_SIZE;
 
-    if (pages_count == 0) return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
-    else if (
-        (page_index >= ((int)nr_pages)) 
-        || (pages_count > (((int)nr_pages) - page_index)) 
-        || (((int)length - 2) < byte_length)
-    ) {
+    if (pages_count == 0)
+        return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
+    else if ((page_index >= ((int)nr_pages)) || (pages_count > (((int)nr_pages) - page_index)) ||
+             (((int)length - 2) < byte_length)) {
         byte = nr_pages;
         return data_frame_make(cmd, STATUS_PAR_ERR, 1, &byte);
     }
@@ -860,7 +887,8 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_write_emu_page_data(uint16_t cmd,
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_get_emu_page_count(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_get_emu_page_count(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                  uint8_t *data) {
     uint8_t byte;
     uint8_t active_slot = tag_emulation_get_slot();
 
@@ -876,7 +904,8 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_get_emu_page_count(uint16_t cmd, 
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &byte);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_read_emu_page_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_read_emu_page_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                  uint8_t *data) {
     uint8_t byte;
     uint8_t active_slot = tag_emulation_get_slot();
 
@@ -903,14 +932,16 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_read_emu_page_data(uint16_t cmd, 
     return data_frame_make(cmd, STATUS_SUCCESS, pages_count * NFC_TAG_MF0_NTAG_DATA_SIZE, &info->memory[page_index][0]);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_get_version_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_get_version_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     uint8_t *version_data = nfc_tag_mf0_ntag_get_version_data();
     if (version_data == NULL) return data_frame_make(cmd, STATUS_INVALID_SLOT_TYPE, 0, NULL);
 
     return data_frame_make(cmd, STATUS_SUCCESS, NFC_TAG_MF0_NTAG_VER_SIZE, version_data);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_set_version_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_set_version_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     if (length != 8) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
 
     uint8_t *version_data = nfc_tag_mf0_ntag_get_version_data();
@@ -920,14 +951,16 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_set_version_data(uint16_t cmd, ui
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_get_signature_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_get_signature_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                  uint8_t *data) {
     uint8_t *signature_data = nfc_tag_mf0_ntag_get_signature_data();
     if (signature_data == NULL) return data_frame_make(cmd, STATUS_INVALID_SLOT_TYPE, 0, NULL);
 
     return data_frame_make(cmd, STATUS_SUCCESS, NFC_TAG_MF0_NTAG_SIG_SIZE, signature_data);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_set_signature_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_set_signature_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                  uint8_t *data) {
     if (length != NFC_TAG_MF0_NTAG_SIG_SIZE) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
 
     uint8_t *signature_data = nfc_tag_mf0_ntag_get_signature_data();
@@ -937,7 +970,8 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_set_signature_data(uint16_t cmd, 
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_get_counter_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_get_counter_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     if (length != 1) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
 
     uint8_t index = data[0] & 0x7F;
@@ -953,7 +987,8 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_get_counter_data(uint16_t cmd, ui
     return data_frame_make(cmd, STATUS_SUCCESS, 4, response);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_set_counter_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_set_counter_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                uint8_t *data) {
     if (length != 4) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
 
     uint8_t index = data[0] & 0x7F;
@@ -971,7 +1006,8 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_set_counter_data(uint16_t cmd, ui
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_reset_auth_cnt(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_reset_auth_cnt(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     // all tags with counters support auth
     uint8_t *counter_data = nfc_tag_mf0_ntag_get_counter_data_by_index(0);
     if (counter_data == NULL) return data_frame_make(cmd, STATUS_INVALID_SLOT_TYPE, 0, NULL);
@@ -982,13 +1018,12 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_reset_auth_cnt(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &old_value);
 }
 
-static data_frame_tx_t *cmd_processor_hf14a_set_anti_coll_data(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_hf14a_set_anti_coll_data(uint16_t cmd, uint16_t status, uint16_t length,
+                                                               uint8_t *data) {
     // uidlen[1]|uid[uidlen]|atqa[2]|sak[1]|atslen[1]|ats[atslen]
     // dynamic length, so no struct
-    if ((length < 1) || \
-            (!is_valid_uid_size(data[0])) || \
-            (length < 1 + data[0] + 2 + 1 + 1) || \
-            (length < 1 + data[0] + 2 + 1 + 1 + data[1 + data[0] + 2 + 1])) {
+    if ((length < 1) || (!is_valid_uid_size(data[0])) || (length < 1 + data[0] + 2 + 1 + 1) ||
+        (length < 1 + data[0] + 2 + 1 + 1 + data[1 + data[0] + 2 + 1])) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
     nfc_tag_14a_coll_res_reference_t *info = get_coll_res_data(true);
@@ -1001,9 +1036,9 @@ static data_frame_tx_t *cmd_processor_hf14a_set_anti_coll_data(uint16_t cmd, uin
     memcpy(info->atqa, &data[offset], 2);
     offset += 2;
     info->sak[0] = data[offset];
-    offset ++;
+    offset++;
     info->ats->length = data[offset];
-    offset ++;
+    offset++;
     memcpy(info->ats->data, &data[offset], info->ats->length);
     offset += info->ats->length;
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
@@ -1053,7 +1088,8 @@ static data_frame_tx_t *cmd_processor_get_slot_tag_nick(uint16_t cmd, uint16_t s
     return data_frame_make(cmd, STATUS_SUCCESS, buffer[0], &buffer[1]);
 }
 
-static data_frame_tx_t *cmd_processor_delete_slot_tag_nick(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_delete_slot_tag_nick(uint16_t cmd, uint16_t status, uint16_t length,
+                                                           uint8_t *data) {
     if (length != 2) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1072,7 +1108,8 @@ static data_frame_tx_t *cmd_processor_delete_slot_tag_nick(uint16_t cmd, uint16_
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_emulator_config(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_emulator_config(uint16_t cmd, uint16_t status, uint16_t length,
+                                                              uint8_t *data) {
     uint8_t mf1_info[5] = {};
     mf1_info[0] = nfc_tag_mf1_is_detection_enable();
     mf1_info[1] = nfc_tag_mf1_is_gen1a_magic_mode();
@@ -1082,12 +1119,14 @@ static data_frame_tx_t *cmd_processor_mf1_get_emulator_config(uint16_t cmd, uint
     return data_frame_make(cmd, STATUS_SUCCESS, 5, mf1_info);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_gen1a_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_gen1a_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     uint8_t mode = nfc_tag_mf1_is_gen1a_magic_mode();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &mode);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_set_gen1a_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_set_gen1a_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     if (length != 1 && data[0] > 1) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1108,12 +1147,14 @@ static data_frame_tx_t *cmd_processor_mf1_set_gen2_mode(uint16_t cmd, uint16_t s
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_block_anti_coll_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_block_anti_coll_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                   uint8_t *data) {
     uint8_t mode = nfc_tag_mf1_is_use_mf1_coll_res();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &mode);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_set_block_anti_coll_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_set_block_anti_coll_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                                   uint8_t *data) {
     if (length != 1 && data[0] > 1) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1121,12 +1162,14 @@ static data_frame_tx_t *cmd_processor_mf1_set_block_anti_coll_mode(uint16_t cmd,
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_get_write_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_get_write_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     uint8_t mode = nfc_tag_mf1_get_write_mode();
     return data_frame_make(cmd, STATUS_SUCCESS, 1, &mode);
 }
 
-static data_frame_tx_t *cmd_processor_mf1_set_write_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf1_set_write_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                         uint8_t *data) {
     if (length != 1 || data[0] > 3) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1146,11 +1189,13 @@ static data_frame_tx_t *cmd_processor_get_enabled_slots(uint16_t cmd, uint16_t s
     return data_frame_make(cmd, STATUS_SUCCESS, sizeof(payload), (uint8_t *)&payload);
 }
 
-static data_frame_tx_t *cmd_processor_get_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_get_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length,
+                                                          uint8_t *data) {
     return data_frame_make(cmd, STATUS_SUCCESS, BLE_PAIRING_KEY_LEN, settings_get_ble_connect_key());
 }
 
-static data_frame_tx_t *cmd_processor_set_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_set_ble_connect_key(uint16_t cmd, uint16_t status, uint16_t length,
+                                                          uint8_t *data) {
     if (length != BLE_PAIRING_KEY_LEN) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1170,14 +1215,14 @@ static data_frame_tx_t *cmd_processor_set_ble_connect_key(uint16_t cmd, uint16_t
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
-static data_frame_tx_t *cmd_processor_delete_all_ble_bonds(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_delete_all_ble_bonds(uint16_t cmd, uint16_t status, uint16_t length,
+                                                           uint8_t *data) {
     advertising_stop();
     delete_bonds_all();
     return data_frame_make(cmd, STATUS_SUCCESS, 0, NULL);
 }
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
-
 
 /**
  * before reader run, reset reader and on antenna,
@@ -1190,7 +1235,6 @@ static data_frame_tx_t *before_reader_run(uint16_t cmd, uint16_t status, uint16_
     }
     return NULL;
 }
-
 
 /**
  * before reader run, reset reader and on antenna,
@@ -1219,17 +1263,20 @@ static data_frame_tx_t *after_hf_reader_run(uint16_t cmd, uint16_t status, uint1
 // fct will be defined after m_data_cmd_map because we need to know its size
 data_frame_tx_t *cmd_processor_get_device_capabilities(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data);
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_get_uid_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_get_uid_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     int rc = nfc_tag_mf0_ntag_get_uid_mode();
 
-    if (rc < 0) return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
+    if (rc < 0)
+        return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     else {
         uint8_t res = rc;
         return data_frame_make(cmd, STATUS_SUCCESS, 1, &res);
     }
 }
 
-static data_frame_tx_t *cmd_processor_mf0_ntag_set_uid_mode(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
+static data_frame_tx_t *cmd_processor_mf0_ntag_set_uid_mode(uint16_t cmd, uint16_t status, uint16_t length,
+                                                            uint8_t *data) {
     if (length != 1 || !nfc_tag_mf0_ntag_set_uid_mode(data[0] != 0)) {
         return data_frame_make(cmd, STATUS_PAR_ERR, 0, NULL);
     }
@@ -1239,102 +1286,105 @@ static data_frame_tx_t *cmd_processor_mf0_ntag_set_uid_mode(uint16_t cmd, uint16
 
 /**
  * (cmd -> processor) function map, the map struct is:
- *       cmd code                               before process               cmd processor                                after process
+ *       cmd code                               before process               cmd processor after process
  */
 static cmd_data_map_t m_data_cmd_map[] = {
-    {    DATA_CMD_GET_APP_VERSION,              NULL,                        cmd_processor_get_app_version,               NULL                   },
-    {    DATA_CMD_CHANGE_DEVICE_MODE,           NULL,                        cmd_processor_change_device_mode,            NULL                   },
-    {    DATA_CMD_GET_DEVICE_MODE,              NULL,                        cmd_processor_get_device_mode,               NULL                   },
-    {    DATA_CMD_SET_ACTIVE_SLOT,              NULL,                        cmd_processor_set_active_slot,               NULL                   },
-    {    DATA_CMD_SET_SLOT_TAG_TYPE,            NULL,                        cmd_processor_set_slot_tag_type,             NULL                   },
-    {    DATA_CMD_SET_SLOT_DATA_DEFAULT,        NULL,                        cmd_processor_set_slot_data_default,         NULL                   },
-    {    DATA_CMD_SET_SLOT_ENABLE,              NULL,                        cmd_processor_set_slot_enable,               NULL                   },
-    {    DATA_CMD_SET_SLOT_TAG_NICK,            NULL,                        cmd_processor_set_slot_tag_nick,             NULL                   },
-    {    DATA_CMD_GET_SLOT_TAG_NICK,            NULL,                        cmd_processor_get_slot_tag_nick,             NULL                   },
-    {    DATA_CMD_SLOT_DATA_CONFIG_SAVE,        NULL,                        cmd_processor_slot_data_config_save,         NULL                   },
-    {    DATA_CMD_ENTER_BOOTLOADER,             NULL,                        cmd_processor_enter_bootloader,              NULL                   },
-    {    DATA_CMD_GET_DEVICE_CHIP_ID,           NULL,                        cmd_processor_get_device_chip_id,            NULL                   },
-    {    DATA_CMD_GET_DEVICE_ADDRESS,           NULL,                        cmd_processor_get_device_address,            NULL                   },
-    {    DATA_CMD_SAVE_SETTINGS,                NULL,                        cmd_processor_save_settings,                 NULL                   },
-    {    DATA_CMD_RESET_SETTINGS,               NULL,                        cmd_processor_reset_settings,                NULL                   },
-    {    DATA_CMD_SET_ANIMATION_MODE,           NULL,                        cmd_processor_set_animation_mode,            NULL                   },
-    {    DATA_CMD_GET_ANIMATION_MODE,           NULL,                        cmd_processor_get_animation_mode,            NULL                   },
-    {    DATA_CMD_GET_GIT_VERSION,              NULL,                        cmd_processor_get_git_version,               NULL                   },
-    {    DATA_CMD_GET_ACTIVE_SLOT,              NULL,                        cmd_processor_get_active_slot,               NULL                   },
-    {    DATA_CMD_GET_SLOT_INFO,                NULL,                        cmd_processor_get_slot_info,                 NULL                   },
-    {    DATA_CMD_WIPE_FDS,                     NULL,                        cmd_processor_wipe_fds,                      NULL                   },
-    {    DATA_CMD_DELETE_SLOT_TAG_NICK,         NULL,                        cmd_processor_delete_slot_tag_nick,          NULL                   },
-    {    DATA_CMD_GET_ENABLED_SLOTS,            NULL,                        cmd_processor_get_enabled_slots,             NULL                   },
-    {    DATA_CMD_DELETE_SLOT_SENSE_TYPE,       NULL,                        cmd_processor_delete_slot_sense_type,        NULL                   },
-    {    DATA_CMD_GET_BATTERY_INFO,             NULL,                        cmd_processor_get_battery_info,              NULL                   },
-    {    DATA_CMD_GET_BUTTON_PRESS_CONFIG,      NULL,                        cmd_processor_get_button_press_config,       NULL                   },
-    {    DATA_CMD_SET_BUTTON_PRESS_CONFIG,      NULL,                        cmd_processor_set_button_press_config,       NULL                   },
-    {    DATA_CMD_GET_LONG_BUTTON_PRESS_CONFIG, NULL,                        cmd_processor_get_long_button_press_config,  NULL                   },
-    {    DATA_CMD_SET_LONG_BUTTON_PRESS_CONFIG, NULL,                        cmd_processor_set_long_button_press_config,  NULL                   },
-    {    DATA_CMD_GET_BLE_PAIRING_KEY,          NULL,                        cmd_processor_get_ble_connect_key,           NULL                   },
-    {    DATA_CMD_SET_BLE_PAIRING_KEY,          NULL,                        cmd_processor_set_ble_connect_key,           NULL                   },
-    {    DATA_CMD_DELETE_ALL_BLE_BONDS,         NULL,                        cmd_processor_delete_all_ble_bonds,          NULL                   },
-    {    DATA_CMD_GET_DEVICE_MODEL,             NULL,                        cmd_processor_get_device_model,              NULL                   },
-    {    DATA_CMD_GET_DEVICE_SETTINGS,          NULL,                        cmd_processor_get_device_settings,           NULL                   },
-    {    DATA_CMD_GET_DEVICE_CAPABILITIES,      NULL,                        cmd_processor_get_device_capabilities,       NULL                   },
-    {    DATA_CMD_GET_BLE_PAIRING_ENABLE,       NULL,                        cmd_processor_get_ble_pairing_enable,        NULL                   },
-    {    DATA_CMD_SET_BLE_PAIRING_ENABLE,       NULL,                        cmd_processor_set_ble_pairing_enable,        NULL                   },
+    {DATA_CMD_GET_APP_VERSION, NULL, cmd_processor_get_app_version, NULL},
+    {DATA_CMD_CHANGE_DEVICE_MODE, NULL, cmd_processor_change_device_mode, NULL},
+    {DATA_CMD_GET_DEVICE_MODE, NULL, cmd_processor_get_device_mode, NULL},
+    {DATA_CMD_SET_ACTIVE_SLOT, NULL, cmd_processor_set_active_slot, NULL},
+    {DATA_CMD_SET_SLOT_TAG_TYPE, NULL, cmd_processor_set_slot_tag_type, NULL},
+    {DATA_CMD_SET_SLOT_DATA_DEFAULT, NULL, cmd_processor_set_slot_data_default, NULL},
+    {DATA_CMD_SET_SLOT_ENABLE, NULL, cmd_processor_set_slot_enable, NULL},
+    {DATA_CMD_SET_SLOT_TAG_NICK, NULL, cmd_processor_set_slot_tag_nick, NULL},
+    {DATA_CMD_GET_SLOT_TAG_NICK, NULL, cmd_processor_get_slot_tag_nick, NULL},
+    {DATA_CMD_SLOT_DATA_CONFIG_SAVE, NULL, cmd_processor_slot_data_config_save, NULL},
+    {DATA_CMD_ENTER_BOOTLOADER, NULL, cmd_processor_enter_bootloader, NULL},
+    {DATA_CMD_GET_DEVICE_CHIP_ID, NULL, cmd_processor_get_device_chip_id, NULL},
+    {DATA_CMD_GET_DEVICE_ADDRESS, NULL, cmd_processor_get_device_address, NULL},
+    {DATA_CMD_SAVE_SETTINGS, NULL, cmd_processor_save_settings, NULL},
+    {DATA_CMD_RESET_SETTINGS, NULL, cmd_processor_reset_settings, NULL},
+    {DATA_CMD_SET_ANIMATION_MODE, NULL, cmd_processor_set_animation_mode, NULL},
+    {DATA_CMD_GET_ANIMATION_MODE, NULL, cmd_processor_get_animation_mode, NULL},
+    {DATA_CMD_GET_GIT_VERSION, NULL, cmd_processor_get_git_version, NULL},
+    {DATA_CMD_GET_ACTIVE_SLOT, NULL, cmd_processor_get_active_slot, NULL},
+    {DATA_CMD_GET_SLOT_INFO, NULL, cmd_processor_get_slot_info, NULL},
+    {DATA_CMD_WIPE_FDS, NULL, cmd_processor_wipe_fds, NULL},
+    {DATA_CMD_DELETE_SLOT_TAG_NICK, NULL, cmd_processor_delete_slot_tag_nick, NULL},
+    {DATA_CMD_GET_ENABLED_SLOTS, NULL, cmd_processor_get_enabled_slots, NULL},
+    {DATA_CMD_DELETE_SLOT_SENSE_TYPE, NULL, cmd_processor_delete_slot_sense_type, NULL},
+    {DATA_CMD_GET_BATTERY_INFO, NULL, cmd_processor_get_battery_info, NULL},
+    {DATA_CMD_GET_BUTTON_PRESS_CONFIG, NULL, cmd_processor_get_button_press_config, NULL},
+    {DATA_CMD_SET_BUTTON_PRESS_CONFIG, NULL, cmd_processor_set_button_press_config, NULL},
+    {DATA_CMD_GET_LONG_BUTTON_PRESS_CONFIG, NULL, cmd_processor_get_long_button_press_config, NULL},
+    {DATA_CMD_SET_LONG_BUTTON_PRESS_CONFIG, NULL, cmd_processor_set_long_button_press_config, NULL},
+    {DATA_CMD_GET_BLE_PAIRING_KEY, NULL, cmd_processor_get_ble_connect_key, NULL},
+    {DATA_CMD_SET_BLE_PAIRING_KEY, NULL, cmd_processor_set_ble_connect_key, NULL},
+    {DATA_CMD_DELETE_ALL_BLE_BONDS, NULL, cmd_processor_delete_all_ble_bonds, NULL},
+    {DATA_CMD_GET_DEVICE_MODEL, NULL, cmd_processor_get_device_model, NULL},
+    {DATA_CMD_GET_DEVICE_SETTINGS, NULL, cmd_processor_get_device_settings, NULL},
+    {DATA_CMD_GET_DEVICE_CAPABILITIES, NULL, cmd_processor_get_device_capabilities, NULL},
+    {DATA_CMD_GET_BLE_PAIRING_ENABLE, NULL, cmd_processor_get_ble_pairing_enable, NULL},
+    {DATA_CMD_SET_BLE_PAIRING_ENABLE, NULL, cmd_processor_set_ble_pairing_enable, NULL},
 
 #if defined(PROJECT_CHAMELEON_ULTRA)
 
-    {    DATA_CMD_HF14A_SCAN,                   before_hf_reader_run,        cmd_processor_hf14a_scan,                    after_hf_reader_run    },
-    {    DATA_CMD_MF1_DETECT_SUPPORT,           before_hf_reader_run,        cmd_processor_mf1_detect_support,            after_hf_reader_run    },
-    {    DATA_CMD_MF1_DETECT_PRNG,              before_hf_reader_run,        cmd_processor_mf1_detect_prng,               after_hf_reader_run    },
-    {    DATA_CMD_MF1_STATIC_NESTED_ACQUIRE,    before_hf_reader_run,        cmd_processor_mf1_static_nested_acquire,     after_hf_reader_run    },
-    {    DATA_CMD_MF1_DARKSIDE_ACQUIRE,         before_hf_reader_run,        cmd_processor_mf1_darkside_acquire,          after_hf_reader_run    },
-    {    DATA_CMD_MF1_DETECT_NT_DIST,           before_hf_reader_run,        cmd_processor_mf1_detect_nt_dist,            after_hf_reader_run    },
-    {    DATA_CMD_MF1_NESTED_ACQUIRE,           before_hf_reader_run,        cmd_processor_mf1_nested_acquire,            after_hf_reader_run    },
+    {DATA_CMD_HF14A_SCAN, before_hf_reader_run, cmd_processor_hf14a_scan, after_hf_reader_run},
+    {DATA_CMD_MF1_DETECT_SUPPORT, before_hf_reader_run, cmd_processor_mf1_detect_support, after_hf_reader_run},
+    {DATA_CMD_MF1_DETECT_PRNG, before_hf_reader_run, cmd_processor_mf1_detect_prng, after_hf_reader_run},
+    {DATA_CMD_MF1_STATIC_NESTED_ACQUIRE, before_hf_reader_run, cmd_processor_mf1_static_nested_acquire,
+     after_hf_reader_run},
+    {DATA_CMD_MF1_DARKSIDE_ACQUIRE, before_hf_reader_run, cmd_processor_mf1_darkside_acquire, after_hf_reader_run},
+    {DATA_CMD_MF1_DETECT_NT_DIST, before_hf_reader_run, cmd_processor_mf1_detect_nt_dist, after_hf_reader_run},
+    {DATA_CMD_MF1_NESTED_ACQUIRE, before_hf_reader_run, cmd_processor_mf1_nested_acquire, after_hf_reader_run},
 
-    {    DATA_CMD_MF1_AUTH_ONE_KEY_BLOCK,       before_hf_reader_run,        cmd_processor_mf1_auth_one_key_block,        after_hf_reader_run    },
-    {    DATA_CMD_MF1_READ_ONE_BLOCK,           before_hf_reader_run,        cmd_processor_mf1_read_one_block,            after_hf_reader_run    },
-    {    DATA_CMD_MF1_WRITE_ONE_BLOCK,          before_hf_reader_run,        cmd_processor_mf1_write_one_block,           after_hf_reader_run    },
-    {    DATA_CMD_HF14A_RAW,                    before_reader_run,           cmd_processor_hf14a_raw,                     NULL                   },
-    {    DATA_CMD_MF1_MANIPULATE_VALUE_BLOCK,   before_hf_reader_run,        cmd_processor_mf1_manipulate_value_block,    after_hf_reader_run    },
-    {    DATA_CMD_MF1_CHECK_KEYS_OF_SECTORS,    before_hf_reader_run,        cmd_processor_mf1_check_keys_of_sectors,     after_hf_reader_run    },
+    {DATA_CMD_MF1_AUTH_ONE_KEY_BLOCK, before_hf_reader_run, cmd_processor_mf1_auth_one_key_block, after_hf_reader_run},
+    {DATA_CMD_MF1_READ_ONE_BLOCK, before_hf_reader_run, cmd_processor_mf1_read_one_block, after_hf_reader_run},
+    {DATA_CMD_MF1_WRITE_ONE_BLOCK, before_hf_reader_run, cmd_processor_mf1_write_one_block, after_hf_reader_run},
+    {DATA_CMD_HF14A_RAW, before_reader_run, cmd_processor_hf14a_raw, NULL},
+    {DATA_CMD_MF1_MANIPULATE_VALUE_BLOCK, before_hf_reader_run, cmd_processor_mf1_manipulate_value_block,
+     after_hf_reader_run},
+    {DATA_CMD_MF1_CHECK_KEYS_OF_SECTORS, before_hf_reader_run, cmd_processor_mf1_check_keys_of_sectors,
+     after_hf_reader_run},
 
-    {    DATA_CMD_EM410X_SCAN,                  before_reader_run,           cmd_processor_em410x_scan,                   NULL                   },
-    {    DATA_CMD_EM410X_WRITE_TO_T55XX,        before_reader_run,           cmd_processor_em410x_write_to_t55XX,         NULL                   },
+    {DATA_CMD_EM410X_SCAN, before_reader_run, cmd_processor_em410x_scan, NULL},
+    {DATA_CMD_EM410X_WRITE_TO_T55XX, before_reader_run, cmd_processor_em410x_write_to_t55XX, NULL},
 
 #endif
 
-    {    DATA_CMD_MF1_WRITE_EMU_BLOCK_DATA,     NULL,                        cmd_processor_mf1_write_emu_block_data,      NULL                   },
-    {    DATA_CMD_HF14A_SET_ANTI_COLL_DATA,     NULL,                        cmd_processor_hf14a_set_anti_coll_data,      NULL                   },
+    {DATA_CMD_MF1_WRITE_EMU_BLOCK_DATA, NULL, cmd_processor_mf1_write_emu_block_data, NULL},
+    {DATA_CMD_HF14A_SET_ANTI_COLL_DATA, NULL, cmd_processor_hf14a_set_anti_coll_data, NULL},
 
-    {    DATA_CMD_MF1_SET_DETECTION_ENABLE,     NULL,                        cmd_processor_mf1_set_detection_enable,      NULL                   },
-    {    DATA_CMD_MF1_GET_DETECTION_COUNT,      NULL,                        cmd_processor_mf1_get_detection_count,       NULL                   },
-    {    DATA_CMD_MF1_GET_DETECTION_LOG,        NULL,                        cmd_processor_mf1_get_detection_log,         NULL                   },
-    {    DATA_CMD_MF1_GET_DETECTION_ENABLE,     NULL,                        cmd_processor_mf1_get_detection_enable,      NULL                   },
-    {    DATA_CMD_MF1_READ_EMU_BLOCK_DATA,      NULL,                        cmd_processor_mf1_read_emu_block_data,       NULL                   },
-    {    DATA_CMD_MF1_GET_EMULATOR_CONFIG,      NULL,                        cmd_processor_mf1_get_emulator_config,       NULL                   },
-    {    DATA_CMD_MF1_GET_GEN1A_MODE,           NULL,                        cmd_processor_mf1_get_gen1a_mode,            NULL                   },
-    {    DATA_CMD_MF1_SET_GEN1A_MODE,           NULL,                        cmd_processor_mf1_set_gen1a_mode,            NULL                   },
-    {    DATA_CMD_MF1_GET_GEN2_MODE,            NULL,                        cmd_processor_mf1_get_gen2_mode,             NULL                   },
-    {    DATA_CMD_MF1_SET_GEN2_MODE,            NULL,                        cmd_processor_mf1_set_gen2_mode,             NULL                   },
-    {    DATA_CMD_MF1_GET_BLOCK_ANTI_COLL_MODE, NULL,                        cmd_processor_mf1_get_block_anti_coll_mode,  NULL                   },
-    {    DATA_CMD_MF1_SET_BLOCK_ANTI_COLL_MODE, NULL,                        cmd_processor_mf1_set_block_anti_coll_mode,  NULL                   },
-    {    DATA_CMD_MF1_GET_WRITE_MODE,           NULL,                        cmd_processor_mf1_get_write_mode,            NULL                   },
-    {    DATA_CMD_MF1_SET_WRITE_MODE,           NULL,                        cmd_processor_mf1_set_write_mode,            NULL                   },
-    {    DATA_CMD_HF14A_GET_ANTI_COLL_DATA,     NULL,                        cmd_processor_hf14a_get_anti_coll_data,      NULL                   },
-    {    DATA_CMD_MF0_NTAG_GET_UID_MAGIC_MODE,  NULL,                        cmd_processor_mf0_ntag_get_uid_mode,         NULL                   },
-    {    DATA_CMD_MF0_NTAG_SET_UID_MAGIC_MODE,  NULL,                        cmd_processor_mf0_ntag_set_uid_mode,         NULL                   },
-    {    DATA_CMD_MF0_NTAG_READ_EMU_PAGE_DATA,  NULL,                        cmd_processor_mf0_ntag_read_emu_page_data,   NULL                   },
-    {    DATA_CMD_MF0_NTAG_WRITE_EMU_PAGE_DATA, NULL,                        cmd_processor_mf0_ntag_write_emu_page_data,  NULL                   },
-    {    DATA_CMD_MF0_NTAG_GET_VERSION_DATA,    NULL,                        cmd_processor_mf0_ntag_get_version_data,     NULL                   },
-    {    DATA_CMD_MF0_NTAG_SET_VERSION_DATA,    NULL,                        cmd_processor_mf0_ntag_set_version_data,     NULL                   },
-    {    DATA_CMD_MF0_NTAG_GET_SIGNATURE_DATA,  NULL,                        cmd_processor_mf0_ntag_get_signature_data,   NULL                   },
-    {    DATA_CMD_MF0_NTAG_SET_SIGNATURE_DATA,  NULL,                        cmd_processor_mf0_ntag_set_signature_data,   NULL                   },
-    {    DATA_CMD_MF0_NTAG_GET_COUNTER_DATA,    NULL,                        cmd_processor_mf0_ntag_get_counter_data,     NULL                   },
-    {    DATA_CMD_MF0_NTAG_SET_COUNTER_DATA,    NULL,                        cmd_processor_mf0_ntag_set_counter_data,     NULL                   },
-    {    DATA_CMD_MF0_NTAG_RESET_AUTH_CNT,      NULL,                        cmd_processor_mf0_ntag_reset_auth_cnt,       NULL                   },
-    {    DATA_CMD_MF0_NTAG_GET_PAGE_COUNT,      NULL,                        cmd_processor_mf0_ntag_get_emu_page_count,   NULL                   },
+    {DATA_CMD_MF1_SET_DETECTION_ENABLE, NULL, cmd_processor_mf1_set_detection_enable, NULL},
+    {DATA_CMD_MF1_GET_DETECTION_COUNT, NULL, cmd_processor_mf1_get_detection_count, NULL},
+    {DATA_CMD_MF1_GET_DETECTION_LOG, NULL, cmd_processor_mf1_get_detection_log, NULL},
+    {DATA_CMD_MF1_GET_DETECTION_ENABLE, NULL, cmd_processor_mf1_get_detection_enable, NULL},
+    {DATA_CMD_MF1_READ_EMU_BLOCK_DATA, NULL, cmd_processor_mf1_read_emu_block_data, NULL},
+    {DATA_CMD_MF1_GET_EMULATOR_CONFIG, NULL, cmd_processor_mf1_get_emulator_config, NULL},
+    {DATA_CMD_MF1_GET_GEN1A_MODE, NULL, cmd_processor_mf1_get_gen1a_mode, NULL},
+    {DATA_CMD_MF1_SET_GEN1A_MODE, NULL, cmd_processor_mf1_set_gen1a_mode, NULL},
+    {DATA_CMD_MF1_GET_GEN2_MODE, NULL, cmd_processor_mf1_get_gen2_mode, NULL},
+    {DATA_CMD_MF1_SET_GEN2_MODE, NULL, cmd_processor_mf1_set_gen2_mode, NULL},
+    {DATA_CMD_MF1_GET_BLOCK_ANTI_COLL_MODE, NULL, cmd_processor_mf1_get_block_anti_coll_mode, NULL},
+    {DATA_CMD_MF1_SET_BLOCK_ANTI_COLL_MODE, NULL, cmd_processor_mf1_set_block_anti_coll_mode, NULL},
+    {DATA_CMD_MF1_GET_WRITE_MODE, NULL, cmd_processor_mf1_get_write_mode, NULL},
+    {DATA_CMD_MF1_SET_WRITE_MODE, NULL, cmd_processor_mf1_set_write_mode, NULL},
+    {DATA_CMD_HF14A_GET_ANTI_COLL_DATA, NULL, cmd_processor_hf14a_get_anti_coll_data, NULL},
+    {DATA_CMD_MF0_NTAG_GET_UID_MAGIC_MODE, NULL, cmd_processor_mf0_ntag_get_uid_mode, NULL},
+    {DATA_CMD_MF0_NTAG_SET_UID_MAGIC_MODE, NULL, cmd_processor_mf0_ntag_set_uid_mode, NULL},
+    {DATA_CMD_MF0_NTAG_READ_EMU_PAGE_DATA, NULL, cmd_processor_mf0_ntag_read_emu_page_data, NULL},
+    {DATA_CMD_MF0_NTAG_WRITE_EMU_PAGE_DATA, NULL, cmd_processor_mf0_ntag_write_emu_page_data, NULL},
+    {DATA_CMD_MF0_NTAG_GET_VERSION_DATA, NULL, cmd_processor_mf0_ntag_get_version_data, NULL},
+    {DATA_CMD_MF0_NTAG_SET_VERSION_DATA, NULL, cmd_processor_mf0_ntag_set_version_data, NULL},
+    {DATA_CMD_MF0_NTAG_GET_SIGNATURE_DATA, NULL, cmd_processor_mf0_ntag_get_signature_data, NULL},
+    {DATA_CMD_MF0_NTAG_SET_SIGNATURE_DATA, NULL, cmd_processor_mf0_ntag_set_signature_data, NULL},
+    {DATA_CMD_MF0_NTAG_GET_COUNTER_DATA, NULL, cmd_processor_mf0_ntag_get_counter_data, NULL},
+    {DATA_CMD_MF0_NTAG_SET_COUNTER_DATA, NULL, cmd_processor_mf0_ntag_set_counter_data, NULL},
+    {DATA_CMD_MF0_NTAG_RESET_AUTH_CNT, NULL, cmd_processor_mf0_ntag_reset_auth_cnt, NULL},
+    {DATA_CMD_MF0_NTAG_GET_PAGE_COUNT, NULL, cmd_processor_mf0_ntag_get_emu_page_count, NULL},
 
-    {    DATA_CMD_EM410X_SET_EMU_ID,            NULL,                        cmd_processor_em410x_set_emu_id,             NULL                   },
-    {    DATA_CMD_EM410X_GET_EMU_ID,            NULL,                        cmd_processor_em410x_get_emu_id,             NULL                   },
+    {DATA_CMD_EM410X_SET_EMU_ID, NULL, cmd_processor_em410x_set_emu_id, NULL},
+    {DATA_CMD_EM410X_GET_EMU_ID, NULL, cmd_processor_em410x_get_emu_id, NULL},
 };
 
 data_frame_tx_t *cmd_processor_get_device_capabilities(uint16_t cmd, uint16_t status, uint16_t length, uint8_t *data) {
@@ -1357,17 +1407,16 @@ data_frame_tx_t *cmd_processor_get_device_capabilities(uint16_t cmd, uint16_t st
 static void auto_response_data(data_frame_tx_t *resp) {
     // TODO Please select the reply source automatically according to the message source,
     //  and do not reply by checking the validity of the link layer by layer
-//     if (is_usb_working()) {
-//         usb_cdc_write(resp->buffer, resp->length);
-//     } else if (is_nus_working()) {
-//         nus_data_response(resp->buffer, resp->length);
-//     } else {
-//         NRF_LOG_ERROR("No connection valid found at response client.");
-//     }
+    // if (is_usb_working()) {
+    //     usb_cdc_write(resp->buffer, resp->length);
+    // } else if (is_nus_working()) {
+    //     nus_data_response(resp->buffer, resp->length);
+    // } else {
+    //     NRF_LOG_ERROR("No connection valid found at response client.");
+    // }
     tud_cdc_write(resp->buffer, resp->length);
     tud_cdc_write_flush();
 }
-
 
 /**@brief Function to process data frame(cmd)
  */
@@ -1385,7 +1434,8 @@ void on_data_frame_received(uint16_t cmd, uint16_t status, uint16_t length, uint
                     break;
                 }
             }
-            if (m_data_cmd_map[i].cmd_processor != NULL) response = m_data_cmd_map[i].cmd_processor(cmd, status, length, data);
+            if (m_data_cmd_map[i].cmd_processor != NULL)
+                response = m_data_cmd_map[i].cmd_processor(cmd, status, length, data);
             if (m_data_cmd_map[i].cmd_after != NULL) {
                 data_frame_tx_t *after_resp = m_data_cmd_map[i].cmd_after(cmd, status, length, data);
                 if (after_resp != NULL) {

@@ -9,7 +9,7 @@
 #include "tag_base_type.h"
 
 //Up to eight card slots
-#define TAG_MAX_SLOT_NUM    8
+#define TAG_MAX_SLOT_NUM    64
 
 extern bool g_is_tag_emulating;
 
@@ -46,7 +46,7 @@ typedef struct {
  */
 #define TAG_SLOT_CONFIG_CURRENT_VERSION 8
 // Intended struct size, for static assert
-#define TAG_SLOT_CONFIG_CURRENT_SIZE 68
+#define TAG_SLOT_CONFIG_CURRENT_SIZE 8*64 + 4
 
 typedef struct {
     //Basic configuration
