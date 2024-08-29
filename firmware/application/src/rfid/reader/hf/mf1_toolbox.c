@@ -1024,13 +1024,13 @@ uint16_t auth_key_use_522_hw(uint8_t block, uint8_t type, uint8_t *key) {
     return pcd_14a_reader_mf1_auth(p_tag_info, type, block, key);
 }
 
-inline void mf1_toolbox_antenna_restart() {
+void mf1_toolbox_antenna_restart() {
     pcd_14a_reader_reset();
     pcd_14a_reader_antenna_on();
     bsp_delay_ms(8);
 }
 
-inline void mf1_toolbox_report_healthy() {
+void mf1_toolbox_report_healthy() {
     bsp_wdt_feed();
     while (NRF_LOG_PROCESS())
         ;
