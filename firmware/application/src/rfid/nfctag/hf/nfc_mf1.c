@@ -1018,13 +1018,26 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
 nfc_tag_14a_coll_res_reference_t *get_mifare_coll_res() {
     //According to the current interoperability configuration, selectively return the configuration data to selectively, assuming that the data interoperability is turned on, then we also need to ensure that the current simulation card is 4BYTE
     if (m_tag_information->config.use_mf1_coll_res && m_tag_information->res_coll.size == NFC_TAG_14A_UID_SINGLE_SIZE) {
+        if(m_tag_information->res_coll.size == NFC_TAG_14A_UID_SINGLE_SIZE){
         // Manufacturer information obtained by the data area
-        nfc_tag_mf1_factory_info_t *block0_factory_info = (nfc_tag_mf1_factory_info_t *)m_tag_information->memory[0];
-        m_shadow_coll_res.sak = block0_factory_info->sak;               //Replace SAK
-        m_shadow_coll_res.atqa = block0_factory_info->atqa;             //Replace ATQA
-        m_shadow_coll_res.uid = block0_factory_info->uid;               // Replace UID
-        m_shadow_coll_res.size = &(m_tag_information->res_coll.size);   // Reuse type
-        m_shadow_coll_res.ats = &(m_tag_information->res_coll.ats);     // Reuse ATS
+            nfc_tag_mf1_factory_info_t *block0_factory_info = (nfc_tag_mf1_factory_info_t *)m_tag_information->memory[0];
+            m_shadow_coll_res.sak = block0_factory_info->sak;               //Replace SAK
+            m_shadow_coll_res.atqa = block0_factory_info->atqa;             //Replace ATQA
+            m_shadow_coll_res.uid = block0_factory_info->uid;               // Replace UID
+            m_shadow_coll_res.size = &(m_tag_information->res_coll.size);   // Reuse type
+            m_shadow_coll_res.ats = &(m_tag_information->res_coll.ats);     // Reuse ATS
+        }else if(m_tag_information->res_coll.size == NFC_TAG_14A_UID_DOUBLE_SIZE){
+            // Manufacturer information obtained by the data area
+            //041219C3219316 98 4200 E32000000000
+            nfc_tag_mf1_factory_info_t *block0_factory_info = (nfc_tag_mf1_factory_info_t *)m_tag_information->memory[0];
+            m_shadow_coll_res.sak = m_tag_information->res_coll.sak;        //The SAK is not store in block0
+            m_shadow_coll_res.atqa = block0_factory_info->manufacturer;     //First 2 bytes of manufacturer data
+            m_shadow_coll_res.uid = block0_factory_info->uid;               //first 7 bytes uid
+            m_shadow_coll_res.size = &(m_tag_information->res_coll.size);   // Reuse type
+            m_shadow_coll_res.ats = &(m_tag_information->res_coll.ats);     // Reuse ATS
+        }else if(m_tag_information->res_coll.size == NFC_TAG_14A_UID_TRIPLE_SIZE){
+            //TODO not implemented
+        }
     } else {
         // Use a separate anti -conflict information instead of using the information in the sector
         m_shadow_coll_res.sak = m_tag_information->res_coll.sak;
