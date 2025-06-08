@@ -1017,7 +1017,7 @@ void nfc_tag_mf1_state_handler(uint8_t *p_data, uint16_t szDataBits) {
  */
 nfc_tag_14a_coll_res_reference_t *get_mifare_coll_res() {
     //According to the current interoperability configuration, selectively return the configuration data to selectively, assuming that the data interoperability is turned on, then we also need to ensure that the current simulation card is 4BYTE
-    if (m_tag_information->config.use_mf1_coll_res && m_tag_information->res_coll.size == NFC_TAG_14A_UID_SINGLE_SIZE) {
+    if (m_tag_information->config.use_mf1_coll_res) {
         if(m_tag_information->res_coll.size == NFC_TAG_14A_UID_SINGLE_SIZE){
         // Manufacturer information obtained by the data area
             nfc_tag_mf1_factory_info_t *block0_factory_info = (nfc_tag_mf1_factory_info_t *)m_tag_information->memory[0];
