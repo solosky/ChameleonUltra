@@ -5,12 +5,13 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
+#include "tag_emulation.h"
 NRF_LOG_MODULE_REGISTER();
 
 
 
 static void get_fds_map_by_slot_auto_inc_id(uint16_t id, uint8_t slot, tag_sense_type_t sense_type, fds_slot_record_map_t *map) {
-    if ((sense_type == TAG_SENSE_NO) || (slot > 7)) {
+    if ((sense_type == TAG_SENSE_NO) || (slot > TAG_MAX_SLOT_NUM)) {
         APP_ERROR_CHECK(NRF_ERROR_INVALID_PARAM);
     }
     map->id = id + slot;
